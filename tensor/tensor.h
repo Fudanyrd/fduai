@@ -1,0 +1,204 @@
+#include <vector>
+#include <cuda_runtime.h>
+#include <string>
+#include <iostream>
+#include <cstdlib>
+
+#include <Python.h>
+#include <pybind11/buffer_info.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <pybind11/embed.h>
+#include <pybind11/numpy.h>
+
+enum class Device {
+    CPU = 0,
+    CUDA = 1,
+};
+
+struct Tensor {
+    // Shape of the tensor (e.g., [2, 3, 4] for a 3D tensor)
+    std::vector<int> shape;
+
+    // Total number of elements
+    int num_elements;
+
+    // Pointer to the data on the GPU
+    float* data;
+
+    // Device type (CPU or CUDA)
+    Device device;
+
+    // Constructor
+    Tensor(const std::vector<int>& shape, Device dev) : shape(shape), device(dev) {
+        num_elements = 1;
+        for (int dim : shape) {
+            num_elements *= dim;
+        }
+
+        size_t buf_size = num_elements * sizeof(float);
+
+        if (device == Device::CUDA) {
+            auto ret = cudaMalloc(&data, buf_size);
+
+            if (ret != cudaSuccess) {
+                throw std::runtime_error("Failed to allocate memory on GPU");
+            }
+        } else if (device == Device::CPU) {
+            data = static_cast<float*>(malloc(buf_size));
+            if (!data) {
+                throw std::runtime_error("Failed to allocate memory on CPU");
+            }
+        } else {
+            throw std::invalid_argument("Invalid device type");
+        }
+    }
+
+    // Destructor
+    ~Tensor() {
+        if (data) {
+
+            if (device == Device::CUDA) 
+                cudaFree(data);
+            else 
+                free(data);
+        }
+    }
+
+    // Copy constructor and assignment operator should be deleted to prevent accidental copying
+    Tensor(const Tensor&) = delete;
+    Tensor& operator=(const Tensor&) = delete;
+
+    // Move constructor and assignment operator
+    Tensor(Tensor&& other) noexcept : shape(std::move(other.shape)), num_elements(other.num_elements), data(other.data),
+    device(other.device) {
+        other.data = nullptr;
+    }
+
+    Tensor& operator=(Tensor&& other) noexcept {
+        if (this != &other) {
+            if (data) {
+                cudaFree(data);
+            }
+            shape = std::move(other.shape);
+            device = other.device;
+            num_elements = other.num_elements;
+            data = other.data;
+            other.data = nullptr;
+        }
+        return *this;
+    }
+
+    std::string __repr__() const {
+        std::string repr = "Tensor (";
+        for (size_t i = 0; i < shape.size(); ++i) {
+            repr += std::to_string(shape[i]);
+            if (i < shape.size() - 1) {
+                repr += ", ";
+            }
+        }
+        repr += ")";
+        return repr;
+    }
+
+    // Element-wise addition
+    Tensor __add__(const Tensor& other) const {
+        return add(*this, other);
+    }
+
+    Tensor __neg__() const {
+        return neg(*this);
+    }
+
+    float __getitem__(int index) const {
+        if (index < 0 || index >= num_elements) {
+            throw std::out_of_range("Index out of range");
+        }
+
+        if (device == Device::CPU) {
+            return data[index]; // Direct access for CPU
+        }
+        
+        float value;
+        cudaMemcpy(&value, data + index, sizeof(float), cudaMemcpyDeviceToHost);
+        return value;
+    }
+
+    void __setitem__(int index, float value) {
+        if (index < 0 || index >= num_elements) {
+            throw std::out_of_range("Index out of range");
+        }
+
+        if (device == Device::CPU) {
+            data[index] = value; // Direct access for CPU
+        } else {
+            cudaMemcpy(data + index, &value, sizeof(float), cudaMemcpyHostToDevice);
+        }
+    }
+
+    size_t __len__() const { 
+        return this->shape[0];
+    }
+
+    static bool allclose(const Tensor &a, const Tensor &b, float atol);
+
+    static Tensor zeros(const std::vector<int>& shape, Device dev = Device::CUDA);
+    static Tensor ones(const std::vector<int>& shape, Device dev);
+    void to(Device device);
+    Tensor clone() const;
+
+    void save(const std::string& filename) const;
+
+    PyObject *to_numpy(void) const;
+    pybind11::list to_list(void) const;
+    static Tensor from_list(const pybind11::list &list);
+
+    pybind11::buffer_info get_buffer_info();
+    static Tensor from_numpy(pybind11::array_t<float, pybind11::array::c_style | pybind11::array::forcecast> &arr) {
+        //
+        // https://pybind11.readthedocs.io/en/stable/advanced/pycpp/numpy.html#arrays
+        // restrict the function to only accept numpy, c_style, float arrays
+        //
+
+        auto ndim = arr.ndim();
+        std::vector<int> shape(arr.ndim());
+
+        for (auto i = 0; i < ndim; i++) {
+            shape[i] = arr.shape(i);
+        }
+
+        Tensor tensor(shape, Device::CPU);
+        std::memcpy(tensor.data, arr.data(), tensor.num_elements * sizeof(float));
+        return tensor;
+    }
+
+  private:
+    static Tensor add(const Tensor& a, const Tensor& b) {
+        if (a.device == Device::CUDA && b.device == Device::CUDA) {
+            return cuda_add(a, b);
+        } else if (a.device == Device::CPU && b.device == Device::CPU) {
+            return cpu_add(a, b);
+        } else {
+            throw std::invalid_argument("Cannot add tensors on different devices");
+        }
+    }
+    static Tensor cpu_add(const Tensor& a, const Tensor& b);
+    static Tensor cuda_add(const Tensor& a, const Tensor& b);
+    
+    static Tensor neg(const Tensor &a) {
+        if (a.device == Device::CPU) {
+            return cpu_neg(a);
+        } else if (a.device == Device::CUDA) {
+            return cuda_neg(a);
+        } else {
+            throw std::invalid_argument("Cannot negate tensors on different devices"); 
+        }
+    }
+    static Tensor cpu_neg(const Tensor &a);
+    static Tensor cuda_neg(const Tensor &a);
+
+    template <typename T>
+    static void cpu_memset(T *dst, T value, size_t len);
+
+    std::vector<size_t> get_strides() const;
+};

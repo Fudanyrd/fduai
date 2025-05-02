@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+import os
+
+CUDA_SOURCE = [
+    f for f in os.listdir('.') if f.endswith('.cu')
+]
+
+def is_cuda_src(s: str):
+    if s.endswith('.cpp'):
+        if s.replace('.cpp', '.cu') in CUDA_SOURCE:
+            return True
+    if s.endswith('.cc'):
+        if s.replace('.cc', '.cu') in CUDA_SOURCE:
+            return True
+
+    return False
+
+if __name__ == "__main__":
+    import sys 
+    argv = sys.argv[1:]
+    nvcc_argv = []
+
+    cuda = False
+    compile = False
+    for arg in argv:
+        if arg == '-c':
+            compile = True
+        if is_cuda_src(arg):
+            cuda = True
+
+    if cuda:
+        for arg in argv:
+            if arg.startswith('-f') or arg.startswith('-W') or arg.startswith('-g'):
+                nvcc_argv.append("-Xcompiler")
+                nvcc_argv.append(arg)
+            elif is_cuda_src(arg):
+                nvcc_argv.append(arg.replace('.cpp', '.cu').replace('.cc', '.cu'))
+            else:
+                nvcc_argv.append(arg)
+    else:
+        nvcc_argv = argv
+
+    import subprocess
+    if cuda:
+        ret = subprocess.run(["nvcc"] + nvcc_argv)
+    else:
+        ret = subprocess.run(['g++'] + nvcc_argv)
+    os._exit(ret.returncode)
