@@ -3,8 +3,12 @@
 #include <thread>
 #include <cmath>
 
+#define N_THREADS 8
+
 typedef float (*unary_op)(float a);
 typedef float (*binary_op)(float a, float b);
+typedef float (*map_fn)(float a, float b);
+typedef float (*reduce_fn)(const float *a, size_t len);
 
 static const std::vector<int> scalar_shape = {1};
 
@@ -157,6 +161,13 @@ static void subKernel(const float *a, const float *b, float *result, int num_ele
                 { return a - b; });
 }
 
+Tensor Tensor::cpu_add_scalar(const Tensor &a, float &b) {
+    Tensor result(a.shape, Device::CPU);
+    tensorScalarOpKernel(a.data, b, result.data, a.num_elements, [](float a, float b)
+                         { return a + b; });
+    return result;
+}
+
 Tensor Tensor::cpu_add(const Tensor &a, const Tensor &b)
 {
     if (b.shape == scalar_shape) {
@@ -269,4 +280,82 @@ Tensor Tensor::cpu_transpose(const Tensor &a)
     }
 
     return result;
+}
+
+static float map_reduce(const float *a, float default_val, size_t n, map_fn map, reduce_fn reduce)
+{
+    float *buf = static_cast<float *>(malloc(N_THREADS * sizeof(float)));
+    size_t chunk_size = n / N_THREADS;
+    
+    /* Begin map */
+    std::vector<std::thread> threads;
+    for (int t = 0; t < N_THREADS; t++)
+    {
+        int i = chunk_size * t;
+        int j = (t + 1 == N_THREADS) ? n : chunk_size * (t + 1);
+
+        std::thread thread([=]()
+                           {
+            buf[t] = default_val;
+            for (int k = i; k < j; ++k)
+            {
+                buf[t] = map(a[k], buf[t]);
+            } });
+        threads.push_back(std::move(thread));
+    }
+
+    for (auto &thread : threads)
+    {
+        thread.join();
+    }
+    /* End map */
+
+    float ret = reduce(buf, N_THREADS);
+
+    free(buf);
+    return ret;
+}
+
+static float naive_sum(const float *a, size_t n) {
+    float ret = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        ret += a[i];
+    }
+    return ret;
+}
+
+static float naive_max(const float *a, size_t n) {
+    float ret = a[0];
+    for (size_t i = 1; i < n; i++) {
+        ret = std::max(ret, a[i]);
+    }
+    return ret;
+}
+
+float Tensor::cpu_sum_all(const Tensor &a) {
+
+    if (a.num_elements < 2 * N_THREADS) {
+        return naive_sum(a.data, a.num_elements);
+    }
+
+    map_fn map = [](float a, float b) { return a + b; };
+    reduce_fn reduce = naive_sum;
+    float ret = map_reduce(a.data, 0.0f, a.num_elements, map, reduce);
+    return ret;
+}
+
+float Tensor::cpu_max_all(const Tensor &a) {
+    if (a.num_elements < 2 * N_THREADS) {
+        return naive_max(a.data, a.num_elements);
+    }
+
+    map_fn map = [](float a, float b) { return std::max(a, b); };
+    reduce_fn reduce = naive_max;
+
+    //
+    // a.data[0] is an element of a.data.
+    // this will guarantee the correct result
+    //
+    float ret = map_reduce(a.data, a.data[0], a.num_elements, map, reduce);
+    return ret;
 }

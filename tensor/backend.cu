@@ -223,3 +223,11 @@ Tensor Tensor::cuda_transpose(const Tensor &a)
 
     return result;
 }
+
+float Tensor::cuda_sum_all(const Tensor &a) {
+    throw std::runtime_error("CUDA sum_all not implemented yet");
+}
+
+float Tensor::cuda_max_all(const Tensor &a) {
+    throw std::runtime_error("CUDA max_all not implemented yet");
+}
