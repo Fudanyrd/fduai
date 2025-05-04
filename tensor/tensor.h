@@ -328,6 +328,12 @@ struct Tensor
             throw std::invalid_argument("Cannot max tensor on unknown device");
         }
     }
+    static Tensor max(const Tensor &a, bool keep_dim = false, int start_dim = 0) {
+        if (a.device == Device::CPU) {
+            return cpu_max(a, keep_dim, start_dim);
+        }
+        throw std::invalid_argument("CUDA max is not implemented yet");
+    }
 private:
     static Tensor add(const Tensor &a, const Tensor &b)
     {
@@ -534,6 +540,7 @@ private:
 
 
     static float cpu_max_all(const Tensor &a);
+    static Tensor cpu_max(const Tensor &a, bool keep_dim, int start_dim = 0);
     // static Tensor cpu_max(const Tensor &a, int start_dim = 0);
     static float cuda_max_all(const Tensor &a);
 };

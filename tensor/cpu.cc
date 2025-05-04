@@ -531,6 +531,16 @@ static float naive_max(const float *a, size_t n) {
     return ret;
 }
 
+static float kernel_max(const float *a, size_t n) {
+    if (n < 2 * N_THREADS) {
+        return naive_max(a, n);
+    }
+
+    map_fn map = [](float a, float b) { return std::max(a, b); };
+    reduce_fn reduce = naive_max;
+    float ret = map_reduce(a, a[0], n, map, reduce);
+}
+
 float Tensor::cpu_sum_all(const Tensor &a) {
     return kernel_sum(a.data, a.num_elements);
 }
@@ -565,17 +575,46 @@ Tensor Tensor::cpu_sum(const Tensor &a, int start_dim) {
 }
 
 float Tensor::cpu_max_all(const Tensor &a) {
-    if (a.num_elements < 2 * N_THREADS) {
-        return naive_max(a.data, a.num_elements);
+    return kernel_max(a.data, a.num_elements);
+}
+
+Tensor Tensor::cpu_max(const Tensor &a, bool keep_dim, int start_dim) {
+    if (start_dim < 0 || start_dim >= a.shape.size()) {
+        throw std::invalid_argument("start_dim must be 1 or greater");
     }
 
-    map_fn map = [](float a, float b) { return std::max(a, b); };
-    reduce_fn reduce = naive_max;
+    if (start_dim == 0) {
+        //
+        // the same as max_all, but returns a tensor.
+        //
+        Tensor result({1}, Device::CPU);
+        result.data[0] = cpu_max_all(a);
+        return result;
+    }
 
-    //
-    // a.data[0] is an element of a.data.
-    // this will guarantee the correct result
-    //
-    float ret = map_reduce(a.data, a.data[0], a.num_elements, map, reduce);
-    return ret;
+    std::vector<int> shape;
+    size_t n = 1;
+    for (int i = 0; i < start_dim; i++) {
+        shape.push_back(a.shape[i]);
+        n *= a.shape[i];
+    }
+    n = a.num_elements / n;
+
+    if (keep_dim) {
+        Tensor result(a.shape, Device::CPU);
+        auto n_iter = result.num_elements / n;
+        for (int i = 0; i < n_iter; i++) {
+            auto ret = kernel_max(a.data + i * n, n);
+            cpu_memset<float>(result.data + i * n, ret, n);
+        }
+
+        return result;
+    }
+
+    Tensor result(shape, Device::CPU);
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = kernel_max(a.data + i * n, n);
+    }
+
+    return result;
 }

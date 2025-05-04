@@ -52,5 +52,6 @@ PYBIND11_MODULE(tensor_module, m) {
         .def_static("transpose", &Tensor::transpose, py::arg("a"))
         .def_static("sum_all", &Tensor::sum_all, py::arg("a"))
         .def_static("sum", &Tensor::sum, py::arg("a"), py::arg("start_dim"))
-        .def_static("max_all", &Tensor::sum_all, py::arg("a"));
+        .def_static("max_all", &Tensor::sum_all, py::arg("a"))
+        .def_static("max", &Tensor::max, py::arg("a"), py::arg("keep_dim"), py::arg("start_dim"));
 }
