@@ -172,6 +172,28 @@ struct Tensor {
         return tensor;
     }
 
+    static Tensor dot(const Tensor &a, const Tensor &b) {
+        if (a.shape.size() != 2 || b.shape.size() != 2) {
+            throw std::invalid_argument("Dot product requires 2D tensors");
+        }
+        
+        if (a.shape[1] != b.shape[0]) {
+            throw std::invalid_argument("Incompatible dimensions for dot product: " + 
+                                        std::to_string(a.shape[0]) + "x" + std::to_string(a.shape[1]) + " and " + 
+                                        std::to_string(b.shape[0]) + "x" + std::to_string(b.shape[1]));
+        }
+        
+        if (a.device == Device::CUDA && b.device == Device::CUDA) {
+            return cuda_dot(a, b);
+        } else if (a.device == Device::CPU && b.device == Device::CPU) {
+            return cpu_dot(a, b);
+        } else {
+            throw std::invalid_argument("Cannot perform dot product on tensors with different devices");
+        }
+    }
+
+    static Tensor transpose(const Tensor &a); 
+
   private:
     static Tensor add(const Tensor& a, const Tensor& b) {
         if (a.device == Device::CUDA && b.device == Device::CUDA) {
@@ -196,6 +218,9 @@ struct Tensor {
     }
     static Tensor cpu_neg(const Tensor &a);
     static Tensor cuda_neg(const Tensor &a);
+    
+    static Tensor cpu_dot(const Tensor &a, const Tensor &b);
+    static Tensor cuda_dot(const Tensor &a, const Tensor &b);
 
     template <typename T>
     static void cpu_memset(T *dst, T value, size_t len);

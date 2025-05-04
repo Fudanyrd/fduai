@@ -109,6 +109,8 @@ Tensor Tensor::cpu_neg(const Tensor &a) {
     return result;
 }
 
+
+
 template <typename T>
 void Tensor::cpu_memset(T *dst, T value, size_t len) {
     for (size_t i = 0; i < len; i++) {
@@ -117,3 +119,28 @@ void Tensor::cpu_memset(T *dst, T value, size_t len) {
 }
 
 template void Tensor::cpu_memset<float>(float *dst, float value, size_t len);
+
+Tensor Tensor::cpu_dot(const Tensor &a, const Tensor &b) {
+    // a is [m, n] and b is [n, p], result is [m, p]
+    int m = a.shape[0];
+    int n = a.shape[1];
+    int p = b.shape[1];
+    
+    // Create result tensor with shape [m, p]
+    std::vector<int> result_shape = {m, p};
+    Tensor result(result_shape, Device::CPU);
+    
+    // Perform matrix multiplication
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < p; j++) {
+            float sum = 0.0f;
+            for (int k = 0; k < n; k++) {
+                // a[i,k] * b[k,j]
+                sum += a.data[i * n + k] * b.data[k * p + j];
+            }
+            result.data[i * p + j] = sum;
+        }
+    }
+    
+    return result;
+}

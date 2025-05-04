@@ -31,5 +31,6 @@ PYBIND11_MODULE(tensor_module, m) {
 		.def("to_numpy", &Tensor::to_numpy)
         .def_static("zeros", &Tensor::zeros, py::arg("shape"), py::arg("dev") = Device::CUDA)
         .def_static("from_numpy", &Tensor::from_numpy, py::arg("array"))
-        .def_static("ones", &Tensor::ones, py::arg("shape"), py::arg("dev"));
+        .def_static("ones", &Tensor::ones, py::arg("shape"), py::arg("dev"))
+        .def_static("dot", &Tensor::dot, py::arg("a"), py::arg("b"));
 }
