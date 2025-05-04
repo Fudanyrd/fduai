@@ -28,6 +28,8 @@ PYBIND11_MODULE(tensor_module, m) {
         .def(py::self + float())
         .def(py::self - py::self)
         .def(py::self - float())
+        .def(py::self * py::self)
+        .def(py::self * float())
         .def("__getitem__", &Tensor::__getitem__, py::arg("index"))
         .def("__setitem__", &Tensor::__setitem__, py::arg("index"), py::arg("value"))
         .def("__len__", &Tensor::__len__)

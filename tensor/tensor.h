@@ -144,6 +144,13 @@ struct Tensor
         return sub_scalar(*this, scalar);
     }
 
+    Tensor operator*(const Tensor &other) const {
+        return mul(*this, other);
+    }
+    Tensor operator*(float scalar) const {
+        return mul_scalar(*this, scalar);
+    }
+
     Tensor __neg__() const
     {
         return neg(*this);
@@ -336,6 +343,9 @@ private:
     static Tensor cpu_add_scalar(const Tensor &a, float &b);
     static Tensor cuda_add(const Tensor &a, const Tensor &b);
     static Tensor cuda_add_scalar(const Tensor &a, float &b) {
+        //
+        // FIXME: add implementation
+        //
         throw std::invalid_argument("CUDA add scalar not implemented yet");
     }
 
@@ -377,6 +387,50 @@ private:
         // FIXME: CUDA sub scalar is not implemented yet
         //
         throw std::invalid_argument("CUDA sub scalar not implemented yet");
+    }
+
+    static Tensor mul(const Tensor &a, const Tensor &b)
+    {
+        if (a.device == Device::CUDA && b.device == Device::CUDA)
+        {
+            return cuda_mul(a, b);
+        }
+        else if (a.device == Device::CPU && b.device == Device::CPU)
+        {
+            return cpu_mul(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot mul tensors on different devices");
+        }
+    }
+    static Tensor mul_scalar(const Tensor &a, float b) {
+        if (a.device == Device::CUDA)
+        {
+            return cuda_mul_scalar(a, b);
+        }
+        else if (a.device == Device::CPU)
+        {
+            return cpu_mul_scalar(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot mul scalar to tensor on unknown device");
+        }
+    }
+    static Tensor cpu_mul(const Tensor &a, const Tensor &b);
+    static Tensor cuda_mul(const Tensor &a, const Tensor &b) {
+        //
+        // FIXME: CUDA mul is not implemented yet
+        //
+        throw std::invalid_argument("CUDA mul not implemented yet");
+    }
+    static Tensor cpu_mul_scalar(const Tensor &a, float &b);
+    static Tensor cuda_mul_scalar(const Tensor &a, float &b) {
+        //
+        // FIXME: CUDA mul scalar is not implemented yet
+        //
+        throw std::invalid_argument("CUDA mul scalar not implemented yet");
     }
 
     static Tensor neg(const Tensor &a)

@@ -169,6 +169,11 @@ static void subKernel(const float *a, const float *b, float *result, int num_ele
     binOpKernel(a, b, result, num_elements, [](float a, float b)
                 { return a - b; });
 }
+static void mulKernel(const float *a, const float *b, float *result, int num_elements)
+{ 
+    binOpKernel(a, b, result, num_elements, [](float a, float b)
+                { return a * b; });
+}
 
 Tensor Tensor::cpu_add_scalar(const Tensor &a, float &b) {
     Tensor result(a.shape, Device::CPU);
@@ -225,6 +230,29 @@ Tensor Tensor::cpu_sub(const Tensor &a, const Tensor &b)
 
     Tensor result(a.shape, Device::CPU);
     subKernel(a.data, b.data, result.data, a.num_elements);
+    return result;
+}
+
+Tensor Tensor::cpu_mul_scalar(const Tensor &a, float &b) {
+    Tensor result(a.shape, Device::CPU);
+    tensorScalarOpKernel(a.data, b, result.data, a.num_elements, [](float a, float b)
+                         { return a * b; });
+    return result;
+}
+Tensor Tensor::cpu_mul(const Tensor &a, const Tensor &b)
+{
+    if (b.shape == scalar_shape) {
+        return cpu_mul_scalar(a, b.data[0]);
+    }
+
+    // FIXME: broadcasting operation is not supported yet
+    if (a.shape != b.shape)
+    {
+        throw std::invalid_argument("Shapes of tensors must match for subtraction");
+    }
+
+    Tensor result(a.shape, Device::CPU);
+    mulKernel(a.data, b.data, result.data, a.num_elements);
     return result;
 }
 
