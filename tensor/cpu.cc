@@ -5,6 +5,45 @@
 
 #define N_THREADS 8
 
+static bool can_broadcast(const std::vector<int> &a, const std::vector<int> &b)
+{
+    //
+    // if a is (t1, t2) and b is (t2,) or (1..1, t2, 1..1)
+    // then a can broadcast to b.
+    // eg. (2, 3), (3) => ok
+    // eg. (2, 3), (1, 3) => ok
+    // eg. (2, 3), (2) => NO
+    //
+    if (a.size() < b.size())
+    {
+        return false;
+    }
+
+    size_t i2 = 0;
+    while (i2 < b.size() && b[i2] == 1)
+    {
+        i2++;
+    }
+    size_t e2 = b.size() - 1;
+    while (e2 >= i2 && b[e2] == 1) {
+        e2--;
+    }
+
+    size_t i1 = a.size() - b.size() + i2;
+
+    while (i2 < e2)
+    {
+        if (a[i1] != b[i2])
+        {
+            return false;
+        }
+        i1++;
+        i2++;
+    }
+
+    return true;
+}
+
 typedef float (*unary_op)(float a);
 typedef float (*binary_op)(float a, float b);
 typedef float (*map_fn)(float a, float b);
@@ -184,7 +223,7 @@ Tensor Tensor::cpu_add_scalar(const Tensor &a, float &b) {
 
 Tensor Tensor::cpu_add(const Tensor &a, const Tensor &b)
 {
-    if (b.shape == scalar_shape) {
+    if (b.num_elements == 1) {
         Tensor result(a.shape, Device::CPU);
         float item = b.data[0];
 
@@ -194,13 +233,49 @@ Tensor Tensor::cpu_add(const Tensor &a, const Tensor &b)
         return result;
     }
 
-    if (a.shape != b.shape)
+    bool ab = can_broadcast(a.shape, b.shape), ba = can_broadcast(b.shape, a.shape);
+    if (!ab && !ba)
     {
         throw std::invalid_argument("Shapes of tensors must match for addition");
     }
 
-    Tensor result(a.shape, Device::CPU);
-    addKernel(a.data, b.data, result.data, a.num_elements);
+    if (ab) {
+        //
+        // perform a + b
+        //
+        float *pa = a.data;
+        float *pb = b.data;
+
+        Tensor result(a.shape, Device::CPU);
+        float *pr = result.data;
+        size_t stride = b.num_elements;
+        int n = a.num_elements / b.num_elements;
+
+        //
+        // FIXME: if n is very large, we should use multi-thread
+        //
+        for (int i = 0; i < n; i++) {
+            addKernel(pa, pb, pr, b.num_elements);
+            pa += stride;
+            pr += stride;
+        }
+
+        return result;
+    }
+
+    Tensor result(b.shape, Device::CPU);
+    float *pa = a.data, *pb = b.data, *pr = result.data;
+    size_t stride = a.num_elements;
+    int n = b.num_elements / a.num_elements;
+
+    for (int i = 0; i < n; i++) {
+        //
+        // FIXME: if n is very large, we should use multi-thread
+        //
+        addKernel(pa, pb, pr, a.num_elements);
+        pb += stride;
+        pr += stride;
+    }
     return result;
 }
 
@@ -325,6 +400,13 @@ Tensor Tensor::cpu_transpose(const Tensor &a)
     return result;
 }
 
+Tensor Tensor::cpu_exp(const Tensor &a) {
+    Tensor result(a.shape, Device::CPU);
+    unaryOpKernel(a.data, result.data, a.num_elements, [](float a)
+                  { return std::exp(a); });
+    return result;
+}
+
 static float map_reduce(const float *a, float default_val, size_t n, map_fn map, reduce_fn reduce)
 {
     float *buf = static_cast<float *>(malloc(N_THREADS * sizeof(float)));
@@ -366,6 +448,16 @@ static float naive_sum(const float *a, size_t n) {
     }
     return ret;
 }
+static float kernel_sum(const float *a, size_t n) {
+    if (n < 2 * N_THREADS) {
+        return naive_sum(a, n);
+    }
+
+    map_fn map = [](float a, float b) { return a + b; };
+    reduce_fn reduce = naive_sum;
+    float ret = map_reduce(a, 0.0f, n, map, reduce);
+    return ret;
+}
 
 static float naive_max(const float *a, size_t n) {
     float ret = a[0];
@@ -376,15 +468,36 @@ static float naive_max(const float *a, size_t n) {
 }
 
 float Tensor::cpu_sum_all(const Tensor &a) {
-
-    if (a.num_elements < 2 * N_THREADS) {
-        return naive_sum(a.data, a.num_elements);
+    return kernel_sum(a.data, a.num_elements);
+}
+Tensor Tensor::cpu_sum(const Tensor &a, int start_dim) {
+    if (start_dim < 0 || start_dim >= a.shape.size()) {
+        throw std::invalid_argument("start_dim must be 1 or greater");
     }
 
-    map_fn map = [](float a, float b) { return a + b; };
-    reduce_fn reduce = naive_sum;
-    float ret = map_reduce(a.data, 0.0f, a.num_elements, map, reduce);
-    return ret;
+    if (start_dim == 0) {
+        //
+        // the same as sum_all, but returns a tensor.
+        //
+        Tensor result({1}, Device::CPU);
+        result.data[0] = cpu_sum_all(a);
+        return result;
+    }
+
+    std::vector<int> shape;
+    size_t n = 1;
+    for (int i = 0; i < start_dim; i++) {
+        shape.push_back(a.shape[i]);
+        n *= a.shape[i];
+    }
+    n = a.num_elements / n;
+
+    Tensor result(shape, Device::CPU);
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = kernel_sum(a.data + i * n, n);
+    }
+
+    return result;
 }
 
 float Tensor::cpu_max_all(const Tensor &a) {

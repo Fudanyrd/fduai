@@ -45,7 +45,9 @@ PYBIND11_MODULE(tensor_module, m) {
         .def_static("from_numpy", &Tensor::from_numpy, py::arg("array"))
         .def_static("ones", &Tensor::ones, py::arg("shape"), py::arg("dev"))
         .def_static("dot", &Tensor::dot, py::arg("a"), py::arg("b"))
+        .def_static("exp", &Tensor::exp, py::arg("a"))
         .def_static("transpose", &Tensor::transpose, py::arg("a"))
         .def_static("sum_all", &Tensor::sum_all, py::arg("a"))
+        .def_static("sum", &Tensor::sum, py::arg("a"), py::arg("start_dim"))
         .def_static("max_all", &Tensor::sum_all, py::arg("a"));
 }

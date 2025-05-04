@@ -195,6 +195,13 @@ struct Tensor
         return this->shape[0];
     }
 
+    static Tensor exp(const Tensor &a) {
+        if (a.device == Device::CPU) {
+            return cpu_exp(a);
+        }
+        throw std::invalid_argument("CUDA exp is not implemented yet");
+    }
+
     static bool allclose(const Tensor &a, const Tensor &b, float atol);
 
     static Tensor zeros(const std::vector<int> &shape, Device dev = Device::CUDA);
@@ -293,6 +300,12 @@ struct Tensor
         {
             throw std::invalid_argument("Cannot sum tensor on unknown device");
         }
+    }
+    static Tensor sum(const Tensor &a, int start_dim = 0) {
+        if (a.device == Device::CPU) {
+            return cpu_sum(a, start_dim);
+        }
+        throw std::invalid_argument("CUDA sum is not implemented yet");
     }
 
     static float max_all(const Tensor &a) {
@@ -457,6 +470,7 @@ private:
     static Tensor cpu_transpose(const Tensor&a);
     static Tensor cuda_transpose(const Tensor&a);
 
+    static Tensor cpu_exp(const Tensor &a);
 
     template <typename T>
     static void cpu_memset(T *dst, T value, size_t len);
@@ -464,9 +478,11 @@ private:
     std::vector<size_t> get_strides() const;
 
     static float cpu_sum_all(const Tensor &a);
+    static Tensor cpu_sum(const Tensor &a, int start_dim = 0);
     static float cuda_sum_all(const Tensor &a);
 
 
     static float cpu_max_all(const Tensor &a);
+    // static Tensor cpu_max(const Tensor &a, int start_dim = 0);
     static float cuda_max_all(const Tensor &a);
 };
