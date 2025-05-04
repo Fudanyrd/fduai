@@ -3,6 +3,13 @@
 #include <pybind11/stl.h>
 #include "tensor.h" // Include the header file where Tensor is defined
 
+//
+// see 
+// https://pybind11.readthedocs.io/en/stable/advanced/classes.html#operator-overloading
+// for recommended way to overload operators
+//
+#include <pybind11/operators.h>
+
 namespace py = pybind11;
 PYBIND11_MODULE(tensor_module, m) {
     py::enum_<Device>(m, "Device")
@@ -17,7 +24,10 @@ PYBIND11_MODULE(tensor_module, m) {
         .def_readonly("num_elements", &Tensor::num_elements)
         .def_readonly("data", &Tensor::data)
         .def("__repr__", &Tensor::__repr__)
-        .def("__add__", &Tensor::__add__, py::arg("other"))
+        .def(py::self + py::self)
+        .def(py::self + float())
+        .def(py::self - py::self)
+        .def(py::self - float())
         .def("__getitem__", &Tensor::__getitem__, py::arg("index"))
         .def("__setitem__", &Tensor::__setitem__, py::arg("index"), py::arg("value"))
         .def("__len__", &Tensor::__len__)
@@ -33,5 +43,7 @@ PYBIND11_MODULE(tensor_module, m) {
         .def_static("from_numpy", &Tensor::from_numpy, py::arg("array"))
         .def_static("ones", &Tensor::ones, py::arg("shape"), py::arg("dev"))
         .def_static("dot", &Tensor::dot, py::arg("a"), py::arg("b"))
-        .def_static("transpose", &Tensor::transpose, py::arg("a"));
+        .def_static("transpose", &Tensor::transpose, py::arg("a"))
+        .def_static("sum_all", &Tensor::sum_all, py::arg("a"))
+        .def_static("max_all", &Tensor::sum_all, py::arg("a"));
 }
