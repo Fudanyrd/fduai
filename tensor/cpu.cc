@@ -6,6 +6,8 @@
 typedef float (*unary_op)(float a);
 typedef float (*binary_op)(float a, float b);
 
+static const std::vector<int> scalar_shape = {1};
+
 static void unaryOpKernel(const float *a, float *result, int num_elements, unary_op op)
 {
     if (num_elements <= 8)
@@ -98,17 +100,101 @@ static void binOpKernel(const float *a, const float *b, float *result, int num_e
     }
 }
 
+static void tensorScalarOpKernel(const float *a, const float b, float *result, int num_elements, binary_op op)
+{
+    if (num_elements <= 8)
+    {
+        // If the number of elements is small, use a single thread
+        for (int k = 0; k < num_elements; ++k)
+        {
+            result[k] = a[k] + b;
+        }
+        return;
+    }
+
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 7; t++)
+    {
+        int i = num_elements / 8 * t;
+        int j = num_elements / 8 * (t + 1);
+
+        std::thread thread([=]()
+                           {
+            for (int k = i; k < j; ++k) {
+                result[k] = op(a[k], b);
+            } });
+
+        threads.push_back(std::move(thread));
+    }
+
+    {
+        int i = num_elements / 8 * 7;
+        int j = num_elements;
+
+        std::thread thread([=]()
+                           {
+            for (int k = i; k < j; ++k) {
+                result[k] = op(a[k], b);
+            } });
+
+        threads.push_back(std::move(thread));
+    }
+
+    for (auto &thread : threads)
+    {
+        thread.join();
+    }
+}
 static void addKernel(const float *a, const float *b, float *result, int num_elements)
 {
     binOpKernel(a, b, result, num_elements, [](float a, float b)
                 { return a + b; });
 }
 
+static void subKernel(const float *a, const float *b, float *result, int num_elements)
+{ 
+    binOpKernel(a, b, result, num_elements, [](float a, float b)
+                { return a - b; });
+}
+
 Tensor Tensor::cpu_add(const Tensor &a, const Tensor &b)
 {
+    if (b.shape == scalar_shape) {
+        Tensor result(a.shape, Device::CPU);
+        float item = b.data[0];
+
+        tensorScalarOpKernel(a.data, item, result.data, a.num_elements, [](float a, float b)
+                             { return a + b; });
+
+        return result;
+    }
+
     if (a.shape != b.shape)
     {
         throw std::invalid_argument("Shapes of tensors must match for addition");
+    }
+
+    Tensor result(a.shape, Device::CPU);
+    addKernel(a.data, b.data, result.data, a.num_elements);
+    return result;
+}
+
+Tensor Tensor::cpu_sub(const Tensor &a, const Tensor &b)
+{
+    if (b.shape == scalar_shape) {
+        Tensor result(a.shape, Device::CPU);
+        float item = b.data[0];
+
+        tensorScalarOpKernel(a.data, item, result.data, a.num_elements, [](float a, float b)
+                             { return a - b; });
+
+        return result;
+    }
+
+    // FIXME: broadcasting operation is not supported yet
+    if (a.shape != b.shape)
+    {
+        throw std::invalid_argument("Shapes of tensors must match for subtraction");
     }
 
     Tensor result(a.shape, Device::CPU);
