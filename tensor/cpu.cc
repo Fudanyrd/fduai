@@ -12,6 +12,10 @@ typedef float (*reduce_fn)(const float *a, size_t len);
 
 static const std::vector<int> scalar_shape = {1};
 
+/*+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+ * Kernel functions
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-*/
+
 static void unaryOpKernel(const float *a, float *result, int num_elements, unary_op op)
 {
     if (num_elements <= 8)
@@ -65,7 +69,7 @@ static void binOpKernel(const float *a, const float *b, float *result, int num_e
         // If the number of elements is small, use a single thread
         for (int k = 0; k < num_elements; ++k)
         {
-            result[k] = a[k] + b[k];
+            result[k] = op(a[k], b[k]);
         }
         return;
     }
@@ -111,7 +115,7 @@ static void tensorScalarOpKernel(const float *a, const float b, float *result, i
         // If the number of elements is small, use a single thread
         for (int k = 0; k < num_elements; ++k)
         {
-            result[k] = a[k] + b;
+            result[k] = op(a[k], b);
         }
         return;
     }
@@ -149,6 +153,11 @@ static void tensorScalarOpKernel(const float *a, const float b, float *result, i
         thread.join();
     }
 }
+
+/*+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+ * Operators
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-*/
+
 static void addKernel(const float *a, const float *b, float *result, int num_elements)
 {
     binOpKernel(a, b, result, num_elements, [](float a, float b)
@@ -190,6 +199,12 @@ Tensor Tensor::cpu_add(const Tensor &a, const Tensor &b)
     return result;
 }
 
+Tensor Tensor::cpu_sub_scalar(const Tensor &a, float &b) {
+    Tensor result(a.shape, Device::CPU);
+    tensorScalarOpKernel(a.data, b, result.data, a.num_elements, [](float a, float b)
+                         { return a - b; });
+    return result;
+}
 Tensor Tensor::cpu_sub(const Tensor &a, const Tensor &b)
 {
     if (b.shape == scalar_shape) {
@@ -209,7 +224,7 @@ Tensor Tensor::cpu_sub(const Tensor &a, const Tensor &b)
     }
 
     Tensor result(a.shape, Device::CPU);
-    addKernel(a.data, b.data, result.data, a.num_elements);
+    subKernel(a.data, b.data, result.data, a.num_elements);
     return result;
 }
 

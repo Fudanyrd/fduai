@@ -126,6 +126,23 @@ struct Tensor
     {
         return add(*this, other);
     }
+    Tensor operator+(const Tensor &other) const {
+        return add(*this, other);
+    }
+    Tensor operator+(float scalar) const {
+        return add_scalar(*this, scalar);
+    }
+
+    Tensor __sub__(const Tensor &other) const
+    {
+        return sub(*this, other);
+    }
+    Tensor operator-(const Tensor &other) const {
+        return sub(*this, other);
+    }
+    Tensor operator-(float scalar) const {
+        return sub_scalar(*this, scalar);
+    }
 
     Tensor __neg__() const
     {
@@ -256,6 +273,35 @@ struct Tensor
         }
     }
 
+    static float sum_all(const Tensor &a) {
+        if (a.device == Device::CUDA)
+        {
+            return cuda_sum_all(a);
+        }
+        else if (a.device == Device::CPU)
+        {
+            return cpu_sum_all(a);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot sum tensor on unknown device");
+        }
+    }
+
+    static float max_all(const Tensor &a) {
+        if (a.device == Device::CUDA)
+        {
+            return cuda_max_all(a);
+        }
+        else if (a.device == Device::CPU)
+        {
+            return cpu_max_all(a);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot max tensor on unknown device");
+        }
+    }
 private:
     static Tensor add(const Tensor &a, const Tensor &b)
     {
@@ -272,8 +318,66 @@ private:
             throw std::invalid_argument("Cannot add tensors on different devices");
         }
     }
+    static Tensor add_scalar(const Tensor &a, float &b) {
+        if (a.device == Device::CUDA)
+        {
+            return cuda_add_scalar(a, b);
+        }
+        else if (a.device == Device::CPU)
+        {
+            return cpu_add_scalar(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot add scalar to tensor on unknown device");
+        }
+    }
     static Tensor cpu_add(const Tensor &a, const Tensor &b);
+    static Tensor cpu_add_scalar(const Tensor &a, float &b);
     static Tensor cuda_add(const Tensor &a, const Tensor &b);
+    static Tensor cuda_add_scalar(const Tensor &a, float &b) {
+        throw std::invalid_argument("CUDA add scalar not implemented yet");
+    }
+
+
+    static Tensor sub(const Tensor &a, const Tensor &b)
+    {
+        if (a.device == Device::CUDA && b.device == Device::CUDA)
+        {
+            return cuda_sub(a, b);
+        }
+        else if (a.device == Device::CPU && b.device == Device::CPU)
+        {
+            return cpu_sub(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot sub tensors on different devices");
+        }
+    }
+    static Tensor sub_scalar(const Tensor &a, float b) {
+        if (a.device == Device::CUDA)
+        {
+            return cuda_sub_scalar(a, b);
+        }
+        else if (a.device == Device::CPU)
+        {
+            return cpu_sub_scalar(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot sub scalar to tensor on unknown device");
+        }
+    }
+    static Tensor cpu_sub(const Tensor &a, const Tensor &b);
+    static Tensor cuda_sub(const Tensor &a, const Tensor &b);
+    static Tensor cpu_sub_scalar(const Tensor &a, float &b);
+    static Tensor cuda_sub_scalar(const Tensor &a, float &b) {
+        //
+        // FIXME: CUDA sub scalar is not implemented yet
+        //
+        throw std::invalid_argument("CUDA sub scalar not implemented yet");
+    }
 
     static Tensor neg(const Tensor &a)
     {
@@ -304,4 +408,11 @@ private:
     static void cpu_memset(T *dst, T value, size_t len);
 
     std::vector<size_t> get_strides() const;
+
+    static float cpu_sum_all(const Tensor &a);
+    static float cuda_sum_all(const Tensor &a);
+
+
+    static float cpu_max_all(const Tensor &a);
+    static float cuda_max_all(const Tensor &a);
 };
