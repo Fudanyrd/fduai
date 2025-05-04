@@ -40,6 +40,20 @@ __global__ void matmulKernel(const float *a, const float *b, float *c, int m, in
     }
 }
 
+// CUDA kernel for matrix transpose
+__global__ void transposeKernel(const float *input, float *output, int rows, int cols)
+{
+    // input is [rows, cols], output is [cols, rows]
+    int ix = blockIdx.x * blockDim.x + threadIdx.x; // column index
+    int iy = blockIdx.y * blockDim.y + threadIdx.y; // row index
+
+    if (ix < cols && iy < rows)
+    {
+        // Read from input[iy, ix], write to output[ix, iy]
+        output[ix * rows + iy] = input[iy * cols + ix];
+    }
+}
+
 Tensor Tensor::cuda_add(const Tensor &a, const Tensor &b)
 {
     if (a.shape != b.shape)
@@ -127,6 +141,44 @@ Tensor Tensor::cuda_dot(const Tensor &a, const Tensor &b)
     if (err != cudaSuccess)
     {
         throw std::runtime_error("CUDA matrix multiplication kernel launch failed: " +
+                                 std::string(cudaGetErrorString(err)));
+    }
+
+    // Wait for kernel to finish
+    cudaDeviceSynchronize();
+
+    return result;
+}
+
+Tensor Tensor::cuda_transpose(const Tensor &a)
+{
+    // Verify input tensor is 2D
+    if (a.shape.size() != 2)
+    {
+        throw std::invalid_argument("Transpose requires a 2D tensor");
+    }
+
+    // Get matrix dimensions
+    int rows = a.shape[0];
+    int cols = a.shape[1];
+
+    // Create result tensor with transposed shape [cols, rows]
+    std::vector<int> result_shape = {cols, rows};
+    Tensor result(result_shape, Device::CUDA);
+
+    // Define block and grid dimensions for 2D kernel
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                       (rows + threadsPerBlock.y - 1) / threadsPerBlock.y);
+
+    // Launch the transpose kernel
+    transposeKernel<<<blocksPerGrid, threadsPerBlock>>>(a.data, result.data, rows, cols);
+
+    // Check for any kernel launch errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        throw std::runtime_error("CUDA transpose kernel launch failed: " +
                                  std::string(cudaGetErrorString(err)));
     }
 
