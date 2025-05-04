@@ -214,6 +214,12 @@ static void mulKernel(const float *a, const float *b, float *result, int num_ele
                 { return a * b; });
 }
 
+static void divKernel(const float *a, const float *b, float *result, int num_elements)
+{ 
+    binOpKernel(a, b, result, num_elements, [](float a, float b)
+                { return a / b; });
+}
+
 Tensor Tensor::cpu_add_scalar(const Tensor &a, float &b) {
     Tensor result(a.shape, Device::CPU);
     tensorScalarOpKernel(a.data, b, result.data, a.num_elements, [](float a, float b)
@@ -328,6 +334,64 @@ Tensor Tensor::cpu_mul(const Tensor &a, const Tensor &b)
 
     Tensor result(a.shape, Device::CPU);
     mulKernel(a.data, b.data, result.data, a.num_elements);
+    return result;
+}
+
+Tensor Tensor::cpu_div_scalar(const Tensor &a, float &b) {
+    Tensor result(a.shape, Device::CPU);
+    tensorScalarOpKernel(a.data, b, result.data, a.num_elements, [](float a, float b)
+                         { return a / b; });
+    return result;
+}
+Tensor Tensor::cpu_div(const Tensor &a, const Tensor &b)
+{
+    if (b.shape == scalar_shape) {
+        return cpu_div_scalar(a, b.data[0]);
+    }
+
+    bool ab = can_broadcast(a.shape, b.shape), ba = can_broadcast(b.shape, a.shape);
+    if (!ab && !ba)
+    {
+        throw std::invalid_argument("Shapes of tensors must match for division");
+    }
+
+    if (ab) {
+        //
+        // perform a / b
+        //
+        float *pa = a.data;
+        float *pb = b.data;
+
+        Tensor result(a.shape, Device::CPU);
+        float *pr = result.data;
+        size_t stride = b.num_elements;
+        int n = a.num_elements / b.num_elements;
+
+        //
+        // FIXME: if n is very large, we should use multi-thread
+        //
+        for (int i = 0; i < n; i++) {
+            divKernel(pa, pb, pr, b.num_elements);
+            pa += stride;
+            pr += stride;
+        }
+
+        return result;
+    }
+
+    Tensor result(b.shape, Device::CPU);
+    float *pa = a.data, *pb = b.data, *pr = result.data;
+    size_t stride = a.num_elements;
+    int n = b.num_elements / a.num_elements;
+
+    for (int i = 0; i < n; i++) {
+        //
+        // FIXME: if n is very large, we should use multi-thread
+        //
+        divKernel(pa, pb, pr, a.num_elements);
+        pb += stride;
+        pr += stride;
+    }
     return result;
 }
 

@@ -150,6 +150,12 @@ struct Tensor
     Tensor operator*(float scalar) const {
         return mul_scalar(*this, scalar);
     }
+    Tensor operator/(const Tensor &other) const {
+        return div(*this, other);
+    }
+    Tensor operator/(float scalar) const {
+        return div_scalar(*this, scalar);
+    }
 
     Tensor __neg__() const
     {
@@ -444,6 +450,51 @@ private:
         // FIXME: CUDA mul scalar is not implemented yet
         //
         throw std::invalid_argument("CUDA mul scalar not implemented yet");
+    }
+
+
+    static Tensor div(const Tensor &a, const Tensor &b)
+    {
+        if (a.device == Device::CUDA && b.device == Device::CUDA)
+        {
+            return cuda_div(a, b);
+        }
+        else if (a.device == Device::CPU && b.device == Device::CPU)
+        {
+            return cpu_div(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot divide tensors on different devices");
+        }
+    }
+    static Tensor div_scalar(const Tensor &a, float b) {
+        if (a.device == Device::CUDA)
+        {
+            return cuda_div_scalar(a, b);
+        }
+        else if (a.device == Device::CPU)
+        {
+            return cpu_div_scalar(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot div scalar to tensor on unknown device");
+        }
+    }
+    static Tensor cpu_div(const Tensor &a, const Tensor &b);
+    static Tensor cuda_div(const Tensor &a, const Tensor &b) {
+        //
+        // FIXME: CUDA div is not implemented yet
+        //
+        throw std::invalid_argument("CUDA div not implemented yet");
+    }
+    static Tensor cpu_div_scalar(const Tensor &a, float &b);
+    static Tensor cuda_div_scalar(const Tensor &a, float &b) {
+        //
+        // FIXME: CUDA div scalar is not implemented yet
+        //
+        throw std::invalid_argument("CUDA div scalar not implemented yet");
     }
 
     static Tensor neg(const Tensor &a)
