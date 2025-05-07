@@ -39,6 +39,12 @@ if __name__ == "__main__":
                 nvcc_argv.append(arg)
     else:
         nvcc_argv = argv
+        try:
+            defs = os.environ['DEFS']
+        except KeyError:
+            defs = ""
+        for df in defs.strip().split():
+            nvcc_argv.append('-D' + df)
 
     import subprocess
     if cuda:
