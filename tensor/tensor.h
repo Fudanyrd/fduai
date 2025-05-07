@@ -17,6 +17,8 @@ enum class Device
     CUDA = 1,
 };
 
+extern size_t indices_to_offset(const std::vector<int> &shape, const std::vector<int> &indices);
+
 struct Tensor
 {
     // Shape of the tensor (e.g., [2, 3, 4] for a 3D tensor)
@@ -177,6 +179,10 @@ struct Tensor
         float value;
         cudaMemcpy(&value, data + index, sizeof(float), cudaMemcpyDeviceToHost);
         return value;
+    }
+
+    const float *elem_at(const std::vector<int> &asshape, const std::vector<int> &indices) const {
+        return this -> view(asshape, indices);
     }
 
     void __setitem__(int index, float value)
@@ -543,4 +549,8 @@ private:
     static Tensor cpu_max(const Tensor &a, bool keep_dim, int start_dim = 0);
     // static Tensor cpu_max(const Tensor &a, int start_dim = 0);
     static float cuda_max_all(const Tensor &a);
+
+
+    const float *view(const std::vector<int> &asshape, const std::vector<int> &indices) const;
+    const float *view(const std::vector<int> &asshape, int idx) const;
 };

@@ -34,6 +34,7 @@ PYBIND11_MODULE(tensor_module, m) {
         .def(py::self / float())
         .def("__neg__", &Tensor::__neg__)
         .def("__getitem__", &Tensor::__getitem__, py::arg("index"))
+        .def("elem_at", &Tensor::elem_at, py::arg("asshape"), py::arg("indices"))
         .def("__setitem__", &Tensor::__setitem__, py::arg("index"), py::arg("value"))
         .def("__len__", &Tensor::__len__)
         .def("get_data", [](const Tensor& self) {
