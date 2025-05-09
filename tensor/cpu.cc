@@ -3,42 +3,62 @@
 #include <thread>
 #include <cmath>
 
+#include <omp.h>
+
 #define N_THREADS 8
 
-static bool can_broadcast(const std::vector<int> &a, const std::vector<int> &b)
+//
+// If a and b can broadcast, set `shape` to the broadcasted shape.
+// Else `shape` is undefined.
+//
+static bool can_broadcast(const std::vector<int> &a, const std::vector<int> &b, std::vector<int> &shape)
 {
     //
-    // if a is (t1, t2) and b is (t2,) or (1..1, t2, 1..1)
-    // then a can broadcast to b.
-    // eg. (2, 3), (3) => ok
-    // eg. (2, 3), (1, 3) => ok
-    // eg. (2, 3), (2) => NO
+    // use the same broadcasting rules as numpy
+    // https://numpy.org/doc/stable/user/basics.broadcasting.html#broadcasting
+    // eg. (3,2) + (3,1) ok
+    // (3,2) + (2,) ok
+    // (3,2) + (1,) ok
     //
-    if (a.size() < b.size())
-    {
-        return false;
-    }
 
-    size_t i2 = 0;
-    while (i2 < b.size() && b[i2] == 1)
-    {
-        i2++;
-    }
-    size_t e2 = b.size() - 1;
-    while (e2 >= i2 && b[e2] == 1) {
-        e2--;
-    }
+    //
+    // When operating on two arrays, NumPy compares their shapes element-wise. 
+    // It starts with the trailing (i.e. rightmost) dimension and works its way left. 
+    // Two dimensions are compatible when:
+    // 1. they are equal, or
+    // 2. one of them is 1
+    //
 
-    size_t i1 = a.size() - b.size() + i2;
-
-    while (i2 < e2)
+    int i1 = a.size() - 1;
+    int i2 = b.size() - 1;
+    int i3 = shape.size() - 1;
+    while (i1 >= 0 && i2 >= 0)
     {
         if (a[i1] != b[i2])
         {
-            return false;
+            if (a[i1] != 1 && b[i2] != 1)
+            {
+                return false;
+            }
         }
-        i1++;
-        i2++;
+        shape[i3] = std::max(a[i1], b[i2]);
+        i1--;
+        i2--;
+        i3--;
+    }
+
+    while (i1 >= 0)
+    {
+        shape[i3] = a[i1];
+        i1--;
+        i3--;
+    }
+
+    while (i2 >= 0)
+    {
+        shape[i3] = b[i2];
+        i2--;
+        i3--;
     }
 
     return true;
@@ -101,52 +121,6 @@ static void unaryOpKernel(const float *a, float *result, int num_elements, unary
     }
 }
 
-static void binOpKernel(const float *a, const float *b, float *result, int num_elements, binary_op op)
-{
-    if (num_elements <= 8)
-    {
-        // If the number of elements is small, use a single thread
-        for (int k = 0; k < num_elements; ++k)
-        {
-            result[k] = op(a[k], b[k]);
-        }
-        return;
-    }
-
-    std::vector<std::thread> threads;
-    for (int t = 0; t < 7; t++)
-    {
-        int i = num_elements / 8 * t;
-        int j = num_elements / 8 * (t + 1);
-
-        std::thread thread([=]()
-                           {
-            for (int k = i; k < j; ++k) {
-                result[k] = op(a[k], b[k]);
-            } });
-
-        threads.push_back(std::move(thread));
-    }
-
-    {
-        int i = num_elements / 8 * 7;
-        int j = num_elements;
-
-        std::thread thread([=]()
-                           {
-            for (int k = i; k < j; ++k) {
-                result[k] = op(a[k], b[k]);
-            } });
-
-        threads.push_back(std::move(thread));
-    }
-
-    for (auto &thread : threads)
-    {
-        thread.join();
-    }
-}
-
 static void tensorScalarOpKernel(const float *a, const float b, float *result, int num_elements, binary_op op)
 {
     if (num_elements <= 8)
@@ -197,29 +171,6 @@ static void tensorScalarOpKernel(const float *a, const float b, float *result, i
  * Operators
   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-*/
 
-static void addKernel(const float *a, const float *b, float *result, int num_elements)
-{
-    binOpKernel(a, b, result, num_elements, [](float a, float b)
-                { return a + b; });
-}
-
-static void subKernel(const float *a, const float *b, float *result, int num_elements)
-{ 
-    binOpKernel(a, b, result, num_elements, [](float a, float b)
-                { return a - b; });
-}
-static void mulKernel(const float *a, const float *b, float *result, int num_elements)
-{ 
-    binOpKernel(a, b, result, num_elements, [](float a, float b)
-                { return a * b; });
-}
-
-static void divKernel(const float *a, const float *b, float *result, int num_elements)
-{ 
-    binOpKernel(a, b, result, num_elements, [](float a, float b)
-                { return a / b; });
-}
-
 Tensor Tensor::cpu_add_scalar(const Tensor &a, float &b) {
     Tensor result(a.shape, Device::CPU);
     tensorScalarOpKernel(a.data, b, result.data, a.num_elements, [](float a, float b)
@@ -229,59 +180,24 @@ Tensor Tensor::cpu_add_scalar(const Tensor &a, float &b) {
 
 Tensor Tensor::cpu_add(const Tensor &a, const Tensor &b)
 {
-    if (b.num_elements == 1) {
-        Tensor result(a.shape, Device::CPU);
-        float item = b.data[0];
 
-        tensorScalarOpKernel(a.data, item, result.data, a.num_elements, [](float a, float b)
-                             { return a + b; });
+    std::vector<int> shape(std::max(a.shape.size(), b.shape.size()), 1);
 
-        return result;
-    }
-
-    bool ab = can_broadcast(a.shape, b.shape), ba = can_broadcast(b.shape, a.shape);
-    if (!ab && !ba)
-    {
+    auto broadcast = can_broadcast(a.shape, b.shape, shape);
+    if (!broadcast) {
         throw std::invalid_argument("Shapes of tensors must match for addition");
     }
 
-    if (ab) {
-        //
-        // perform a + b
-        //
-        float *pa = a.data;
-        float *pb = b.data;
+    Tensor result(shape, Device::CPU);
 
-        Tensor result(a.shape, Device::CPU);
-        float *pr = result.data;
-        size_t stride = b.num_elements;
-        int n = a.num_elements / b.num_elements;
-
-        //
-        // FIXME: if n is very large, we should use multi-thread
-        //
-        for (int i = 0; i < n; i++) {
-            addKernel(pa, pb, pr, b.num_elements);
-            pa += stride;
-            pr += stride;
-        }
-
-        return result;
+    //
+    // accelerated with openmp
+    //
+    #pragma omp parallel for
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = (*a.view(shape, i)) + (*b.view(shape, i));
     }
 
-    Tensor result(b.shape, Device::CPU);
-    float *pa = a.data, *pb = b.data, *pr = result.data;
-    size_t stride = a.num_elements;
-    int n = b.num_elements / a.num_elements;
-
-    for (int i = 0; i < n; i++) {
-        //
-        // FIXME: if n is very large, we should use multi-thread
-        //
-        addKernel(pa, pb, pr, a.num_elements);
-        pb += stride;
-        pr += stride;
-    }
     return result;
 }
 
@@ -293,24 +209,18 @@ Tensor Tensor::cpu_sub_scalar(const Tensor &a, float &b) {
 }
 Tensor Tensor::cpu_sub(const Tensor &a, const Tensor &b)
 {
-    if (b.shape == scalar_shape) {
-        Tensor result(a.shape, Device::CPU);
-        float item = b.data[0];
+    std::vector<int> shape(std::max(a.shape.size(), b.shape.size()), 1);
 
-        tensorScalarOpKernel(a.data, item, result.data, a.num_elements, [](float a, float b)
-                             { return a - b; });
-
-        return result;
-    }
-
-    // FIXME: broadcasting operation is not supported yet
-    if (a.shape != b.shape)
-    {
+    auto broadcast = can_broadcast(a.shape, b.shape, shape);
+    if (!broadcast) {
         throw std::invalid_argument("Shapes of tensors must match for subtraction");
     }
 
-    Tensor result(a.shape, Device::CPU);
-    subKernel(a.data, b.data, result.data, a.num_elements);
+    Tensor result(shape, Device::CPU);
+    #pragma omp parallel for
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = (*a.view(shape, i)) - (*b.view(shape, i));
+    }
     return result;
 }
 
@@ -322,18 +232,19 @@ Tensor Tensor::cpu_mul_scalar(const Tensor &a, float &b) {
 }
 Tensor Tensor::cpu_mul(const Tensor &a, const Tensor &b)
 {
-    if (b.shape == scalar_shape) {
-        return cpu_mul_scalar(a, b.data[0]);
-    }
+    std::vector<int> shape(std::max(a.shape.size(), b.shape.size()), 1);
 
-    // FIXME: broadcasting operation is not supported yet
-    if (a.shape != b.shape)
-    {
+    auto broadcast = can_broadcast(a.shape, b.shape, shape);
+    if (!broadcast) {
         throw std::invalid_argument("Shapes of tensors must match for subtraction");
     }
 
-    Tensor result(a.shape, Device::CPU);
-    mulKernel(a.data, b.data, result.data, a.num_elements);
+    Tensor result(shape, Device::CPU);
+    #pragma omp parallel for
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = (*a.view(shape, i)) * (*b.view(shape, i));
+    }
+
     return result;
 }
 
@@ -345,53 +256,19 @@ Tensor Tensor::cpu_div_scalar(const Tensor &a, float &b) {
 }
 Tensor Tensor::cpu_div(const Tensor &a, const Tensor &b)
 {
-    if (b.shape == scalar_shape) {
-        return cpu_div_scalar(a, b.data[0]);
+    std::vector<int> shape(std::max(a.shape.size(), b.shape.size()), 1);
+
+    auto broadcast = can_broadcast(a.shape, b.shape, shape);
+    if (!broadcast) {
+        throw std::invalid_argument("Shapes of tensors must match for subtraction");
     }
 
-    bool ab = can_broadcast(a.shape, b.shape), ba = can_broadcast(b.shape, a.shape);
-    if (!ab && !ba)
-    {
-        throw std::invalid_argument("Shapes of tensors must match for division");
+    Tensor result(shape, Device::CPU);
+    #pragma omp parallel for
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = (*a.view(shape, i)) / (*b.view(shape, i));
     }
 
-    if (ab) {
-        //
-        // perform a / b
-        //
-        float *pa = a.data;
-        float *pb = b.data;
-
-        Tensor result(a.shape, Device::CPU);
-        float *pr = result.data;
-        size_t stride = b.num_elements;
-        int n = a.num_elements / b.num_elements;
-
-        //
-        // FIXME: if n is very large, we should use multi-thread
-        //
-        for (int i = 0; i < n; i++) {
-            divKernel(pa, pb, pr, b.num_elements);
-            pa += stride;
-            pr += stride;
-        }
-
-        return result;
-    }
-
-    Tensor result(b.shape, Device::CPU);
-    float *pa = a.data, *pb = b.data, *pr = result.data;
-    size_t stride = a.num_elements;
-    int n = b.num_elements / a.num_elements;
-
-    for (int i = 0; i < n; i++) {
-        //
-        // FIXME: if n is very large, we should use multi-thread
-        //
-        divKernel(pa, pb, pr, a.num_elements);
-        pb += stride;
-        pr += stride;
-    }
     return result;
 }
 
@@ -539,13 +416,15 @@ static float kernel_max(const float *a, size_t n) {
     map_fn map = [](float a, float b) { return std::max(a, b); };
     reduce_fn reduce = naive_max;
     float ret = map_reduce(a, a[0], n, map, reduce);
+
+    return ret;
 }
 
 float Tensor::cpu_sum_all(const Tensor &a) {
     return kernel_sum(a.data, a.num_elements);
 }
 Tensor Tensor::cpu_sum(const Tensor &a, int start_dim) {
-    if (start_dim < 0 || start_dim >= a.shape.size()) {
+    if (start_dim < 0 || (size_t)start_dim >= a.shape.size()) {
         throw std::invalid_argument("start_dim must be 1 or greater");
     }
 
@@ -579,7 +458,7 @@ float Tensor::cpu_max_all(const Tensor &a) {
 }
 
 Tensor Tensor::cpu_max(const Tensor &a, bool keep_dim, int start_dim) {
-    if (start_dim < 0 || start_dim >= a.shape.size()) {
+    if (start_dim < 0 || (size_t)start_dim >= a.shape.size()) {
         throw std::invalid_argument("start_dim must be 1 or greater");
     }
 
@@ -600,20 +479,18 @@ Tensor Tensor::cpu_max(const Tensor &a, bool keep_dim, int start_dim) {
     }
     n = a.num_elements / n;
 
-    if (keep_dim) {
-        Tensor result(a.shape, Device::CPU);
-        auto n_iter = result.num_elements / n;
-        for (int i = 0; i < n_iter; i++) {
-            auto ret = kernel_max(a.data + i * n, n);
-            cpu_memset<float>(result.data + i * n, ret, n);
-        }
-
-        return result;
-    }
-
     Tensor result(shape, Device::CPU);
     for (int i = 0; i < result.num_elements; i++) {
         result.data[i] = kernel_max(a.data + i * n, n);
+    }
+
+    if (keep_dim) {
+        //
+        // pad 1 dim util the shape is same as a.shape
+        //
+        for (size_t k = result.shape.size(); k < a.shape.size(); k++) {
+            result.shape.push_back(1);
+        }
     }
 
     return result;

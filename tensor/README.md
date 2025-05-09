@@ -240,6 +240,8 @@ pip install -r requirements.txt
 CC=$PWD/cc python setup.py build_ext --inplace
 ```
 
+> To enable assertions, use `DEFS="__TEST__" CC=$PWD/cc python setup.py build_ext --inplace` instead.
+
 3. Run tests:
 ```bash
 python t.py
