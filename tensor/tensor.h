@@ -159,6 +159,10 @@ struct Tensor
         return div_scalar(*this, scalar);
     }
 
+    Tensor operator<(const Tensor &other) const {
+        return lt(*this, other);
+    }
+
     Tensor __neg__() const
     {
         return neg(*this);
@@ -340,6 +344,14 @@ struct Tensor
         }
         throw std::invalid_argument("CUDA max is not implemented yet");
     }
+
+    static Tensor relu(const Tensor &a) {
+        if (a.device == Device::CPU) {
+            return cpu_relu(a);
+        }
+        throw std::invalid_argument("CUDA relu is not implemented yet");
+    }
+
 private:
     static Tensor add(const Tensor &a, const Tensor &b)
     {
@@ -509,6 +521,29 @@ private:
         throw std::invalid_argument("CUDA div scalar not implemented yet");
     }
 
+    static Tensor lt(const Tensor &a, const Tensor &b)
+    {
+        if (a.device == Device::CUDA && b.device == Device::CUDA)
+        {
+            return cuda_lt(a, b);
+        }
+        else if (a.device == Device::CPU && b.device == Device::CPU)
+        {
+            return cpu_lt(a, b);
+        }
+        else
+        {
+            throw std::invalid_argument("Cannot compare tensors on different devices");
+        }
+    }
+    static Tensor cpu_lt(const Tensor &a, const Tensor &b);
+    static Tensor cuda_lt(const Tensor &a, const Tensor &b) {
+        //
+        // FIXME: CUDA le is not implemented yet
+        //
+        throw std::invalid_argument("CUDA le not implemented yet");
+    }
+
     static Tensor neg(const Tensor &a)
     {
         if (a.device == Device::CPU)
@@ -550,6 +585,13 @@ private:
     // static Tensor cpu_max(const Tensor &a, int start_dim = 0);
     static float cuda_max_all(const Tensor &a);
 
+    static Tensor cpu_relu(const Tensor &a);
+    static Tensor cuda_relu(const Tensor &a) {
+        //
+        // FIXME: CUDA relu is not implemented yet
+        //
+        throw std::invalid_argument("CUDA relu not implemented yet");
+    }
 
     const float *view(const std::vector<int> &asshape, const std::vector<int> &indices) const;
     const float *view(const std::vector<int> &asshape, int idx) const;

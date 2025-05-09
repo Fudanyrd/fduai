@@ -236,7 +236,7 @@ Tensor Tensor::cpu_mul(const Tensor &a, const Tensor &b)
 
     auto broadcast = can_broadcast(a.shape, b.shape, shape);
     if (!broadcast) {
-        throw std::invalid_argument("Shapes of tensors must match for subtraction");
+        throw std::invalid_argument("Shapes of tensors must match for multiply operation");
     }
 
     Tensor result(shape, Device::CPU);
@@ -260,13 +260,33 @@ Tensor Tensor::cpu_div(const Tensor &a, const Tensor &b)
 
     auto broadcast = can_broadcast(a.shape, b.shape, shape);
     if (!broadcast) {
-        throw std::invalid_argument("Shapes of tensors must match for subtraction");
+        throw std::invalid_argument("Shapes of tensors must match for division");
     }
 
     Tensor result(shape, Device::CPU);
     #pragma omp parallel for
     for (int i = 0; i < result.num_elements; i++) {
         result.data[i] = (*a.view(shape, i)) / (*b.view(shape, i));
+    }
+
+    return result;
+}
+
+Tensor Tensor::cpu_lt(const Tensor &a, const Tensor &b)
+{
+    std::vector<int> shape(std::max(a.shape.size(), b.shape.size()), 1);
+
+    auto broadcast = can_broadcast(a.shape, b.shape, shape);
+    if (!broadcast) {
+        throw std::invalid_argument("Shapes of tensors must match for comparison \"<\".");
+    }
+
+    Tensor result(shape, Device::CPU);
+    #pragma omp parallel for
+    for (int i = 0; i < result.num_elements; i++) {
+        const float ea = (*a.view(shape, i));
+        const float eb = (*b.view(shape, i));
+        result.data[i] = (ea < eb) ? 1.0f : 0.0f;
     }
 
     return result;
@@ -491,6 +511,17 @@ Tensor Tensor::cpu_max(const Tensor &a, bool keep_dim, int start_dim) {
         for (size_t k = result.shape.size(); k < a.shape.size(); k++) {
             result.shape.push_back(1);
         }
+    }
+
+    return result;
+}
+
+Tensor Tensor::cpu_relu(const Tensor &a) {
+    Tensor result(a.shape, Device::CPU);
+
+    #pragma omp parallel for
+    for (int i = 0; i < result.num_elements; i++) {
+        result.data[i] = std::max(0.0f, a.data[i]);
     }
 
     return result;

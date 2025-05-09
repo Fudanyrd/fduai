@@ -32,6 +32,7 @@ PYBIND11_MODULE(tensor_module, m) {
         .def(py::self * float())
         .def(py::self / py::self)
         .def(py::self / float())
+        .def(py::self < py::self)
         .def("__neg__", &Tensor::__neg__)
         .def("__getitem__", &Tensor::__getitem__, py::arg("index"))
         .def("elem_at", &Tensor::elem_at, py::arg("asshape"), py::arg("indices"))
@@ -54,5 +55,6 @@ PYBIND11_MODULE(tensor_module, m) {
         .def_static("sum_all", &Tensor::sum_all, py::arg("a"))
         .def_static("sum", &Tensor::sum, py::arg("a"), py::arg("start_dim"))
         .def_static("max_all", &Tensor::sum_all, py::arg("a"))
+        .def_static("relu", &Tensor::relu, py::arg("a"))
         .def_static("max", &Tensor::max, py::arg("a"), py::arg("keep_dim"), py::arg("start_dim"));
 }
