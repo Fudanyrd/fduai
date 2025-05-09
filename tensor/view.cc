@@ -103,6 +103,7 @@ const float *Tensor::view(const std::vector<int> &asshape, int index) const {
     #endif // __TEST__
 
         if (shape[i] == 1) {
+            index %= view_elem;
             continue;
         }
 
@@ -116,7 +117,7 @@ const float *Tensor::view(const std::vector<int> &asshape, int index) const {
         n_elem /= shape[i];
         /* ret += n_elem * indices[i + diff]; */
         ret += n_elem * idx;
-        index /= asshape[i + diff];
+        index %= view_elem;
     }
 
 #ifdef __TEST__
