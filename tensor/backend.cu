@@ -63,22 +63,153 @@ __global__ void transposeKernel(const float *input, float *output, int rows, int
     }
 }
 
-Tensor Tensor::cuda_add(const Tensor &a, const Tensor &b)
+// CUDA kernel for element-wise operation with broadcasting
+template <typename Op>
+__global__ void broadcastOpKernel(const float *a, const float *b, float *result,
+                                  int *a_shape, int a_ndim,
+                                  int *b_shape, int b_ndim,
+                                  int *result_shape, int result_ndim,
+                                  int num_elements, Op op)
 {
-    if (a.shape != b.shape)
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements)
     {
-        throw std::invalid_argument("Tensors must have the same shape for element-wise addition");
+        // Convert flat index to multi-dimensional indices for result tensor
+        int indices[8]; // Support up to 8 dimensions
+        int remaining = idx;
+        for (int i = result_ndim - 1; i >= 0; i--)
+        {
+            indices[i] = remaining % result_shape[i];
+            remaining /= result_shape[i];
+        }
+
+        // Map to a and b indices with broadcasting
+        int a_idx = 0;
+        int b_idx = 0;
+        int a_stride = 1;
+        int b_stride = 1;
+
+        for (int i = a_ndim - 1; i >= 0; i--)
+        {
+            int result_dim = i + (result_ndim - a_ndim);
+            if (result_dim >= 0)
+            {
+                int a_i = (a_shape[i] == 1) ? 0 : indices[result_dim];
+                a_idx += a_i * a_stride;
+            }
+            a_stride *= a_shape[i];
+        }
+
+        for (int i = b_ndim - 1; i >= 0; i--)
+        {
+            int result_dim = i + (result_ndim - b_ndim);
+            if (result_dim >= 0)
+            {
+                int b_i = (b_shape[i] == 1) ? 0 : indices[result_dim];
+                b_idx += b_i * b_stride;
+            }
+            b_stride *= b_shape[i];
+        }
+
+        // Apply the operation
+        result[idx] = op(a[a_idx], b[b_idx]);
+    }
+}
+
+// Operations for the kernels
+struct AddOp
+{
+    __device__ float operator()(float a, float b) const { return a + b; }
+};
+
+struct SubOp
+{
+    __device__ float operator()(float a, float b) const { return a - b; }
+};
+
+struct MulOp
+{
+    __device__ float operator()(float a, float b) const { return a * b; }
+};
+
+struct DivOp
+{
+    __device__ float operator()(float a, float b) const { return a / b; }
+};
+
+// Helper function to check if two shapes can be broadcast and get the result shape
+bool cuda_can_broadcast(const std::vector<int> &a_shape, const std::vector<int> &b_shape, std::vector<int> &result_shape)
+{
+    result_shape.resize(std::max(a_shape.size(), b_shape.size()), 1);
+
+    int i1 = a_shape.size() - 1;
+    int i2 = b_shape.size() - 1;
+    int i3 = result_shape.size() - 1;
+
+    while (i1 >= 0 && i2 >= 0)
+    {
+        if (a_shape[i1] != b_shape[i2])
+        {
+            if (a_shape[i1] != 1 && b_shape[i2] != 1)
+            {
+                return false;
+            }
+        }
+        result_shape[i3] = std::max(a_shape[i1], b_shape[i2]);
+        i1--;
+        i2--;
+        i3--;
     }
 
-    Tensor result(a.shape, Device::CUDA);
-    int num_elements = a.num_elements;
+    while (i1 >= 0)
+    {
+        result_shape[i3] = a_shape[i1];
+        i1--;
+        i3--;
+    }
+
+    while (i2 >= 0)
+    {
+        result_shape[i3] = b_shape[i2];
+        i2--;
+        i3--;
+    }
+
+    return true;
+}
+
+Tensor Tensor::cuda_add(const Tensor &a, const Tensor &b)
+{
+    std::vector<int> result_shape;
+    if (!cuda_can_broadcast(a.shape, b.shape, result_shape))
+    {
+        throw std::invalid_argument("Shapes of tensors cannot be broadcast together for addition");
+    }
+
+    Tensor result(result_shape, Device::CUDA);
+    int num_elements = result.num_elements;
+
+    // Prepare shape arrays for CUDA
+    int *d_a_shape, *d_b_shape, *d_result_shape;
+    cudaMalloc(&d_a_shape, a.shape.size() * sizeof(int));
+    cudaMalloc(&d_b_shape, b.shape.size() * sizeof(int));
+    cudaMalloc(&d_result_shape, result_shape.size() * sizeof(int));
+
+    cudaMemcpy(d_a_shape, a.shape.data(), a.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b_shape, b.shape.data(), b.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result_shape, result_shape.data(), result_shape.size() * sizeof(int), cudaMemcpyHostToDevice);
 
     // Kernel launch parameters
     int threads_per_block = 256;
     int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
 
     // Launch the kernel
-    addKernel<<<blocks_per_grid, threads_per_block>>>(a.data, b.data, result.data, num_elements);
+    broadcastOpKernel<<<blocks_per_grid, threads_per_block>>>(
+        a.data, b.data, result.data,
+        d_a_shape, a.shape.size(),
+        d_b_shape, b.shape.size(),
+        d_result_shape, result_shape.size(),
+        num_elements, AddOp());
 
     // Check for any kernel launch errors
     cudaError_t err = cudaGetLastError();
@@ -86,26 +217,47 @@ Tensor Tensor::cuda_add(const Tensor &a, const Tensor &b)
     {
         throw std::runtime_error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(err)));
     }
+
+    // Free device memory
+    cudaFree(d_a_shape);
+    cudaFree(d_b_shape);
+    cudaFree(d_result_shape);
 
     return result;
 }
 
 Tensor Tensor::cuda_sub(const Tensor &a, const Tensor &b)
 {
-    if (a.shape != b.shape)
+    std::vector<int> result_shape;
+    if (!cuda_can_broadcast(a.shape, b.shape, result_shape))
     {
-        throw std::invalid_argument("Tensors must have the same shape for element-wise subtraction");
+        throw std::invalid_argument("Shapes of tensors cannot be broadcast together for subtraction");
     }
 
-    Tensor result(a.shape, Device::CUDA);
-    int num_elements = a.num_elements;
+    Tensor result(result_shape, Device::CUDA);
+    int num_elements = result.num_elements;
+
+    // Prepare shape arrays for CUDA
+    int *d_a_shape, *d_b_shape, *d_result_shape;
+    cudaMalloc(&d_a_shape, a.shape.size() * sizeof(int));
+    cudaMalloc(&d_b_shape, b.shape.size() * sizeof(int));
+    cudaMalloc(&d_result_shape, result_shape.size() * sizeof(int));
+
+    cudaMemcpy(d_a_shape, a.shape.data(), a.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b_shape, b.shape.data(), b.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result_shape, result_shape.data(), result_shape.size() * sizeof(int), cudaMemcpyHostToDevice);
 
     // Kernel launch parameters
     int threads_per_block = 256;
     int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
 
     // Launch the kernel
-    subKernel<<<blocks_per_grid, threads_per_block>>>(a.data, b.data, result.data, num_elements);
+    broadcastOpKernel<<<blocks_per_grid, threads_per_block>>>(
+        a.data, b.data, result.data,
+        d_a_shape, a.shape.size(),
+        d_b_shape, b.shape.size(),
+        d_result_shape, result_shape.size(),
+        num_elements, SubOp());
 
     // Check for any kernel launch errors
     cudaError_t err = cudaGetLastError();
@@ -113,6 +265,107 @@ Tensor Tensor::cuda_sub(const Tensor &a, const Tensor &b)
     {
         throw std::runtime_error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(err)));
     }
+
+    // Free device memory
+    cudaFree(d_a_shape);
+    cudaFree(d_b_shape);
+    cudaFree(d_result_shape);
+
+    return result;
+}
+
+Tensor Tensor::cuda_mul(const Tensor &a, const Tensor &b)
+{
+    std::vector<int> result_shape;
+    if (!cuda_can_broadcast(a.shape, b.shape, result_shape))
+    {
+        throw std::invalid_argument("Shapes of tensors cannot be broadcast together for multiplication");
+    }
+
+    Tensor result(result_shape, Device::CUDA);
+    int num_elements = result.num_elements;
+
+    // Prepare shape arrays for CUDA
+    int *d_a_shape, *d_b_shape, *d_result_shape;
+    cudaMalloc(&d_a_shape, a.shape.size() * sizeof(int));
+    cudaMalloc(&d_b_shape, b.shape.size() * sizeof(int));
+    cudaMalloc(&d_result_shape, result_shape.size() * sizeof(int));
+
+    cudaMemcpy(d_a_shape, a.shape.data(), a.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b_shape, b.shape.data(), b.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result_shape, result_shape.data(), result_shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Kernel launch parameters
+    int threads_per_block = 256;
+    int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
+
+    // Launch the kernel
+    broadcastOpKernel<<<blocks_per_grid, threads_per_block>>>(
+        a.data, b.data, result.data,
+        d_a_shape, a.shape.size(),
+        d_b_shape, b.shape.size(),
+        d_result_shape, result_shape.size(),
+        num_elements, MulOp());
+
+    // Check for any kernel launch errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        throw std::runtime_error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(err)));
+    }
+
+    // Free device memory
+    cudaFree(d_a_shape);
+    cudaFree(d_b_shape);
+    cudaFree(d_result_shape);
+
+    return result;
+}
+
+Tensor Tensor::cuda_div(const Tensor &a, const Tensor &b)
+{
+    std::vector<int> result_shape;
+    if (!cuda_can_broadcast(a.shape, b.shape, result_shape))
+    {
+        throw std::invalid_argument("Shapes of tensors cannot be broadcast together for division");
+    }
+
+    Tensor result(result_shape, Device::CUDA);
+    int num_elements = result.num_elements;
+
+    // Prepare shape arrays for CUDA
+    int *d_a_shape, *d_b_shape, *d_result_shape;
+    cudaMalloc(&d_a_shape, a.shape.size() * sizeof(int));
+    cudaMalloc(&d_b_shape, b.shape.size() * sizeof(int));
+    cudaMalloc(&d_result_shape, result_shape.size() * sizeof(int));
+
+    cudaMemcpy(d_a_shape, a.shape.data(), a.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b_shape, b.shape.data(), b.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result_shape, result_shape.data(), result_shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Kernel launch parameters
+    int threads_per_block = 256;
+    int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
+
+    // Launch the kernel
+    broadcastOpKernel<<<blocks_per_grid, threads_per_block>>>(
+        a.data, b.data, result.data,
+        d_a_shape, a.shape.size(),
+        d_b_shape, b.shape.size(),
+        d_result_shape, result_shape.size(),
+        num_elements, DivOp());
+
+    // Check for any kernel launch errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        throw std::runtime_error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(err)));
+    }
+
+    // Free device memory
+    cudaFree(d_a_shape);
+    cudaFree(d_b_shape);
+    cudaFree(d_result_shape);
 
     return result;
 }
@@ -224,10 +477,12 @@ Tensor Tensor::cuda_transpose(const Tensor &a)
     return result;
 }
 
-float Tensor::cuda_sum_all(const Tensor &a) {
+float Tensor::cuda_sum_all(const Tensor &a)
+{
     throw std::runtime_error("CUDA sum_all not implemented yet");
 }
 
-float Tensor::cuda_max_all(const Tensor &a) {
+float Tensor::cuda_max_all(const Tensor &a)
+{
     throw std::runtime_error("CUDA max_all not implemented yet");
 }
