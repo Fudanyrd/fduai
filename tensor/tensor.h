@@ -462,12 +462,7 @@ private:
         }
     }
     static Tensor cpu_mul(const Tensor &a, const Tensor &b);
-    static Tensor cuda_mul(const Tensor &a, const Tensor &b) {
-        //
-        // FIXME: CUDA mul is not implemented yet
-        //
-        throw std::invalid_argument("CUDA mul not implemented yet");
-    }
+    static Tensor cuda_mul(const Tensor &a, const Tensor &b);
     static Tensor cpu_mul_scalar(const Tensor &a, float &b);
     static Tensor cuda_mul_scalar(const Tensor &a, float &b) {
         //
@@ -507,12 +502,8 @@ private:
         }
     }
     static Tensor cpu_div(const Tensor &a, const Tensor &b);
-    static Tensor cuda_div(const Tensor &a, const Tensor &b) {
-        //
-        // FIXME: CUDA div is not implemented yet
-        //
-        throw std::invalid_argument("CUDA div not implemented yet");
-    }
+    static Tensor cuda_div(const Tensor &a, const Tensor &b);
+
     static Tensor cpu_div_scalar(const Tensor &a, float &b);
     static Tensor cuda_div_scalar(const Tensor &a, float &b) {
         //
