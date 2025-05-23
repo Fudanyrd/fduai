@@ -324,6 +324,7 @@ Tensor Tensor::cpu_dot(const Tensor &a, const Tensor &b)
     Tensor result(result_shape, Device::CPU);
 
     // Perform matrix multiplication
+    #pragma omp parallel for
     for (int i = 0; i < m; i++)
     {
         for (int j = 0; j < p; j++)
