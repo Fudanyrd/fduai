@@ -78,6 +78,7 @@ class DataNode():
             self.grad += grad
 
     def backward(self, grad=None):
+        no_grad = grad is None
         grad = Tensor.ones(self.shape(), self.tensor.device) if grad is None else grad
 
         if self.op == Operator.NONE:
@@ -130,11 +131,31 @@ class DataNode():
             src = self.inputs[0]
             src._add_grad(-grad)
             src.backward(src.grad)
+        elif self.op == Operator.RELU:
+            src = self.inputs[0]
+            zero_scalar = Tensor.zeros([1, ], src.tensor.device)
+            if not no_grad:
+                grad *= (zero_scalar < src.tensor)
+                src._add_grad(grad)
+            else:
+                src._add_grad(zero_scalar < src.tensor)
+            src.backward(src.grad)
+
+            del zero_scalar
         else:
             raise NotImplementedError()
 
     def compile(self):
         raise NotImplementedError()
+
+    @staticmethod 
+    def relu(x):
+        ret = DataNode(Tensor.relu(x.tensor), requires_grad=x.requires_grad)
+
+        ret.op = Operator.RELU
+        ret.inputs = [x]
+
+        return ret
 
 
 if __name__ == '__main__':

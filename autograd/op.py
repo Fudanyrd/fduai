@@ -14,3 +14,4 @@ class Operator(Enum):
     TRANSPOSE = 'T'
     EQ = '=='
     NE = '!='
+    RELU = 'ReLU'
