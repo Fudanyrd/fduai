@@ -303,6 +303,7 @@ Tensor Tensor::cpu_neg(const Tensor &a)
 template <typename T>
 void Tensor::cpu_memset(T *dst, T value, size_t len)
 {
+    #pragma omp parallel for
     for (size_t i = 0; i < len; i++)
     {
         dst[i] = value;
@@ -525,4 +526,17 @@ Tensor Tensor::cpu_relu(const Tensor &a) {
     }
 
     return result;
+}
+
+Tensor Tensor::cpu_grad_reshape(const Tensor &a, const std::vector<int> &shape) {
+    Tensor ret(shape, Device::CPU);
+    Tensor::cpu_memset<float>(ret.data, 0.0f, ret.num_elements);
+
+    #pragma omp parallel for
+    for (int i = 0; i < a.num_elements; i++) {
+        float *dst = ret.view_mut(a.shape, i);
+        *dst = *dst + a.data[i];
+    }
+
+    return ret;
 }

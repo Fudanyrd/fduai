@@ -56,5 +56,6 @@ PYBIND11_MODULE(tensor_module, m) {
         .def_static("sum", &Tensor::sum, py::arg("a"), py::arg("start_dim"))
         .def_static("max_all", &Tensor::sum_all, py::arg("a"))
         .def_static("relu", &Tensor::relu, py::arg("a"))
+        .def_static("grad_reshape", &Tensor::grad_reshape, py::arg("a"), py::arg("shape"))
         .def_static("max", &Tensor::max, py::arg("a"), py::arg("keep_dim"), py::arg("start_dim"));
 }

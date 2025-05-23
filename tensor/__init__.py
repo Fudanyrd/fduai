@@ -1,2 +1,2 @@
 
-from tensor_module import Tensor, Device
+from .tensor_module import Tensor, Device

@@ -352,6 +352,14 @@ struct Tensor
         throw std::invalid_argument("CUDA relu is not implemented yet");
     }
 
+    static Tensor grad_reshape(const Tensor &a, const std::vector<int> &shape) {
+        if (a.device == Device::CUDA) {
+            throw std::invalid_argument("CUDA grad_reshape is not implemented yet");
+        }
+
+        return cpu_grad_reshape(a, shape);
+    }
+
 private:
     static Tensor add(const Tensor &a, const Tensor &b)
     {
@@ -584,6 +592,14 @@ private:
         throw std::invalid_argument("CUDA relu not implemented yet");
     }
 
+    static Tensor cpu_grad_reshape(const Tensor &a, const std::vector<int> &shape);
+
     const float *view(const std::vector<int> &asshape, const std::vector<int> &indices) const;
     const float *view(const std::vector<int> &asshape, int idx) const;
+    float *view_mut(const std::vector<int> &asshape, const std::vector<int> &indices) {
+        return const_cast<float *>(view(asshape, indices));
+    }
+    float *view_mut(const std::vector<int> &asshape, int idx) {
+        return const_cast<float *>(view(asshape, idx));
+    }
 };
