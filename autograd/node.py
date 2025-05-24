@@ -1,5 +1,6 @@
 from tensor import Tensor, Device
-from .op import Operator
+from common import Operator
+from compiler import CompilerContext, Variable
 
 class DataNode():
     topological_order = []
@@ -11,6 +12,21 @@ class DataNode():
         self.inputs = []
         self.op = Operator.NONE
         DataNode.topological_order.append(self)
+
+    @staticmethod
+    def tensor(shape: list[int], requires_grad: bool = True, device=Device.CPU):
+        t = Variable(shape) if CompilerContext.compiling else Tensor.zeros(shape, device)
+        return DataNode(t, requires_grad)
+
+    @staticmethod 
+    def zeros(shape: list[int], requires_grad: bool = True, device=Device.CPU):
+        t = Variable(shape) if CompilerContext.compiling else Tensor.zeros(shape, device)
+        return DataNode(t, requires_grad)
+
+    @staticmethod 
+    def ones(shape: list[int], requires_grad: bool = True, device=Device.CPU):
+        t = Variable(shape) if CompilerContext.compiling else Tensor.ones(shape, device)
+        return DataNode(t, requires_grad)
 
     def shape(self):
         return self.tensor.shape
@@ -55,7 +71,7 @@ class DataNode():
     
     @staticmethod 
     def matmul(lh, rh):
-        t = Tensor.dot(lh.tensor, rh.tensor)
+        t = type(lh.tensor).dot(lh.tensor, rh.tensor)
         ret = DataNode(t, requires_grad=False)
 
         ret.op = Operator.MATMUL
@@ -70,8 +86,9 @@ class DataNode():
             node.grad = None
 
     def _add_grad(self, grad):
+        TT = type(self.tensor)
         if grad.shape != self.tensor.shape:
-            grad = Tensor.grad_reshape(grad, self.shape())
+            grad = TT.grad_reshape(grad, self.shape())
         if self.grad is None:
             self.grad = grad
         else:
@@ -79,7 +96,12 @@ class DataNode():
 
     def backward(self, grad=None):
         no_grad = grad is None
-        grad = Tensor.ones(self.shape(), self.tensor.device) if grad is None else grad
+        if CompilerContext.compiling:
+            grad = Variable(self.shape()) if grad is None else grad
+        else:
+            grad = Tensor.ones(self.shape(), self.tensor.device) if grad is None else grad
+        
+        TT = type(self.tensor)
 
         if self.op == Operator.NONE:
             self.grad = grad
@@ -117,8 +139,8 @@ class DataNode():
                 lh.backward(lh.grad)
                 rh.backward(rh.grad)
         elif self.op == Operator.MATMUL:
-            self.inputs[0]._add_grad(Tensor.dot(grad, Tensor.transpose(self.inputs[1].tensor)))
-            self.inputs[1]._add_grad(Tensor.dot(Tensor.transpose(self.inputs[0].tensor), grad))
+            self.inputs[0]._add_grad(TT.dot(grad, TT.transpose(self.inputs[1].tensor)))
+            self.inputs[1]._add_grad(TT.dot(TT.transpose(self.inputs[0].tensor), grad))
 
             lh, rh = self.inputs[0], self.inputs[1]
             if DataNode.topological_order.index(lh) < DataNode.topological_order.index(rh):
@@ -133,7 +155,7 @@ class DataNode():
             src.backward(src.grad)
         elif self.op == Operator.RELU:
             src = self.inputs[0]
-            zero_scalar = Tensor.zeros([1, ], src.tensor.device)
+            zero_scalar = TT.zeros([1, ], src.tensor.device)
             if not no_grad:
                 grad *= (zero_scalar < src.tensor)
                 src._add_grad(grad)
