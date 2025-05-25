@@ -18,6 +18,8 @@ class Operator(Enum):
     GT = '>'
     RELU = 'ReLU'
     RESHAPE = 'reshape'
+    RETURN = 'return'
+
 
     @staticmethod
     def load_from_value(value):
@@ -36,6 +38,7 @@ class Operator(Enum):
             '>':  Operator.GT,
             'ReLU': Operator.RELU,
             'reshape': Operator.RESHAPE,
+            "return": Operator.RETURN,
         }
 
         return d[value]

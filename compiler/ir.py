@@ -15,6 +15,12 @@ class Compiler:
         self.shapes = {}
         self.instructions = []
 
+        self.allocated = set()
+        self.globl_var = set()
+
+        self.args = set()
+        self.ret = None
+
         self.prev = False
         self.prev_compiler = None
 
@@ -37,8 +43,22 @@ class Compiler:
         for input in inputs:
             if input not in self.vars:
                 self.vars.append(input)
-
+        
+        if op == Operator.RETURN:
+            self.ret = output
         self.instructions.append((op.value, output, inputs))
+
+    def add_globl_var(self, name: str):
+        if name not in self.shapes:
+            raise RuntimeError(f'Global variable {name} not found')
+
+        self.globl_var.add(name)
+
+    def add_arg(self, name: str):
+        if name not in self.shapes:
+            raise RuntimeError(f'Argument {name} not found')
+
+        self.args.add(name)
 
     def __exit__(self, *args):
         CompilerContext.compiling = self.prev
@@ -93,10 +113,167 @@ class MemoryOp(Enum):
     FREE = 'free'
 
 class Instruction():
-    def __init__(self, op: Operator, output: str, inputs: list[str]):
+    _mlir_bin_ops = {
+        Operator.ADD: 'addf',
+        Operator.SUB: 'subf',
+        Operator.MUL: 'mulf',
+    }
+
+    def __init__(self, op: Operator, output: str, inputs: list[str], compiler = None):
         self.op = op
         self.output = output
         self.inputs = inputs
+        self.compiler = CompilerContext.compiler if compiler is None else compiler
+
+    @staticmethod 
+    def _mlir_shape(shape) -> str:
+        return '<' + 'x'.join([str(x) for x in shape]) + 'xf32>'
+
+    @staticmethod
+    def _mlir_index(output_shape, input_shape) -> str:
+        indices = ['0' if input_shape[i] == 1 else f'%arg{i}' for i in range(len(output_shape))]
+        return '[' + ', '.join(indices) + ']'
+
+    def generate_mlir(self, indent: int = 2) -> str:
+        if self.compiler is None:
+            raise ValueError('Compiler not set')
+
+        ret = ""
+        for node in self.inputs:
+            if node not in self.compiler.allocated:
+                ret += '\t' * indent
+                shape = self.compiler.shapes[node]
+                ret += f'{node} = memref.alloc() : memref{self._mlir_shape(shape)}\n'
+                self.compiler.allocated.add(node)
+
+        output_shape = self.compiler.shapes[self.output]
+        if self.output not in self.compiler.allocated:
+            ret += '\t' * indent
+            ret += f'{self.output} = memref.alloc() : memref{self._mlir_shape(output_shape)}\n'
+            self.compiler.allocated.add(self.output)
+
+        if self.op in self._mlir_bin_ops:
+            # %output = memref.alloc() : output.shape
+
+            lh_shape = self.compiler.shapes[self.inputs[0]]
+            if len(lh_shape) < len(output_shape):
+                lh_shape_ext = [1 for _ in range(len(output_shape) - len(lh_shape))] + lh_shape
+            else:
+                lh_shape_ext = lh_shape
+
+            rh_shape = self.compiler.shapes[self.inputs[1]]
+            if len(rh_shape) < len(output_shape):
+                rh_shape_ext = [1 for _ in range(len(output_shape) - len(rh_shape))] + rh_shape
+            else:
+                rh_shape_ext = rh_shape
+
+            for i in range(len(output_shape)):
+                ret += '\t' * indent
+                # affine.for %arg0 = 0 to 4 {
+                #     affine.for %arg1 = 0 to 3 {
+                # ...
+                ret += f'affine.for arg{i} = 0 to {output_shape[i]} ' + '{\n'
+                indent += 1
+
+            # %s0 = memref.load %a[%arg0, 0] : memref<4x1xf32>
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {self.inputs[0]}' + self._mlir_index(output_shape, lh_shape_ext)
+            ret += ' : memref' + self._mlir_shape(lh_shape) + '\n'
+
+            # %s1 = memref.load %a[0, %arg1] : memref<1x3xf32>
+            ret += '\t' * indent
+            ret += f'%s1 = memref.load {self.inputs[1]}' + self._mlir_index(output_shape, rh_shape_ext)
+            ret += ' : memref' + self._mlir_shape(rh_shape) + '\n'
+
+            # %s2 = arith.addf %s0, %s1 : f32
+            ret += '\t' * indent
+            ret += f'%s2 = arith.{self._mlir_bin_ops[self.op]} %s0, %s1 : f32 \n'
+
+            # memref.store %s2, %c[%arg0, %arg1] : memref<4x3xf32>
+            ret += '\t' * indent
+            ret += f'memref.store %s2, {self.output}' + self._mlir_index(output_shape, output_shape)
+            ret += ' : memref' + self._mlir_shape(output_shape) + '\n'
+
+            for i in range(len(output_shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += '}\n'
+
+            # the result is in self.output.
+        elif self.op == Operator.TRANSPOSE:
+            a, b = tuple(self.compiler.shapes[self.inputs[0]])
+            output_shape = [b, a]
+
+            # affine.for %arg0 = 0 to %a {
+            #    affine.for %arg1 = 0 to %b {
+            #        %s = memref.load %input[%arg0, %arg1] : memref<axbxf32>
+            #        memref.store %s, %output[%arg1, %arg0] : memref<bxaxf32>
+            #    }
+            # }
+
+            # affine.for %arg0 = 0 to %a {
+            ret += '\t' * indent
+            ret += f'affine.for %arg0 = 0 to {a} ' + '{\n'
+            indent += 1
+
+            #    affine.for %arg1 = 0 to %b {
+            ret += '\t' * indent
+            ret += f'affine.for %arg1 = 0 to {b} ' + '{\n'
+            indent += 1
+
+            #        %s = memref.load %input[%arg0, %arg1] : memref<axbxf32>
+            ret += '\t' * indent
+            ret += f'%s = memref.load %input[%arg0, %arg1] : memref<{a}x{b}f32>\n'
+
+            #        memref.store %s, %output[%arg1, %arg0] : memref<bxaxf32>
+            ret += '\t' * indent
+            ret += f'memref.store %s, %output[%arg1, %arg0] : memref<{b}x{a}f32>\n'
+
+            indent -= 1
+            ret += '\t' * indent
+            ret += '}\n'
+            indent -= 1
+            ret += '\t' * indent
+            ret += '}\n'
+        elif self.op == Operator.MATMUL:
+            lh_shape = self.compiler.shapes[self.inputs[0]]
+            rh_shape = self.compiler.shapes[self.inputs[1]]
+            output_shape = self.compiler.shapes[self.output]
+
+            a, b, c = lh_shape[0], lh_shape[1], rh_shape[1]
+            lh, rh = self.inputs[0], self.inputs[1]
+            lines = [
+                f"affine.for %arg0 = 0 to {a}" + " {\n",
+                f"\taffine.for %arg1 = 0 to {c}" + " {\n",
+                f"\t\t%s5 = arith.constant 0.0 : f32\n",
+                f"\t\tmemref.store %s5, {self.output}[%arg0, %arg1] : memref<{a}x{c}xf32>\n",
+                f"\t\taffine.for %arg2 = 0 to {b}" + " {\n",
+                f"\t\t\t%s0 = memref.load {self.output}[%arg0, %arg1] : memref<{a}x{c}xf32>\n",
+                f"\t\t\t%s1 = memref.load {lh}[%arg0, %arg2] : memref<{a}x{b}xf32>\n",
+                f"\t\t\t%s2 = memref.load {rh}[%arg2, %arg1] : memref<{b}x{c}xf32>\n",
+                f"\t\t\t%s3 = arith.mulf %s1, %s2 : f32\n",
+                f"\t\t\t%s4 = arith.addf %s0, %s3 : f32\n",
+                f"\t\t\tmemref.store %s4, {self.output}[%arg0, %arg1] : memref<{a}x{c}xf32>\n",
+                "\t\t}\n",
+                "\t}\n",
+                "}\n",]
+            
+            for line in lines:
+                ret += '\t' * indent 
+                ret += line
+
+            del lines
+        elif self.op == Operator.RETURN:
+            ret += '\t' * indent
+
+            # return %ret : memref<2x2xf32>
+            var = self.compiler.ret
+            shape = self.compiler.shapes[var]
+            ret += f"return {var} : memref{self._mlir_shape(shape)}\n"
+        else:
+            raise NotImplementedError(f'Instruction {self.op.value} not implemented')
+
+        return ret
 
 class Variable():
     count = 0
@@ -221,3 +398,14 @@ class Variable():
         ret = Variable(shape)
         if isinstance(CompilerContext.compiler, Compiler):
             CompilerContext.compiler.add_insn(Operator.RESHAPE, ret.name, x.name)
+
+    def memory(self) -> int:
+        """
+        :return: the memory size of the variable in bytes
+        """
+
+        size = 1
+        for i in self.shape:
+            size *= i
+
+        return size * DType.sizeof(self.dtype)
