@@ -352,6 +352,7 @@ Tensor Tensor::cpu_transpose(const Tensor &a)
     Tensor result(result_shape, Device::CPU);
 
     // Perform Transpose
+    #pragma omp parallel for
     for (int ix = 0; ix < n; ix++)
     {
         for (int jx = 0; jx < m; jx++)
@@ -533,10 +534,16 @@ Tensor Tensor::cpu_grad_reshape(const Tensor &a, const std::vector<int> &shape) 
     Tensor ret(shape, Device::CPU);
     Tensor::cpu_memset<float>(ret.data, 0.0f, ret.num_elements);
 
+    //
+    // since there's shared write to ret.data, we need to use atomic operation.
+    //
+
     #pragma omp parallel for
     for (int i = 0; i < a.num_elements; i++) {
+        const float src = a.data[i];
         float *dst = ret.view_mut(a.shape, i);
-        *dst = *dst + a.data[i];
+        #pragma omp atomic
+        *dst += src;
     }
 
     return ret;
