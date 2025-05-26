@@ -13,6 +13,9 @@ class nn():
     def forward(self, *inputs):
         raise NotImplementedError
 
+    def predict(self, *inputs):
+        return self.forward(*inputs)
+
     def backward(self, dout: DataNode):
         raise NotImplementedError
 
@@ -53,3 +56,34 @@ def compile_nn(nn: nn, input_dims) -> Compiler:
 
     else:
         raise NotImplementedError
+
+def compile_backward(nn: nn, loss_fn, y, input_dims) -> Compiler:
+    if CompilerContext.compiler:
+        compiler = CompilerContext.compiler
+
+        inputs = []
+        for dim in input_dims:
+            inputs.append(DataNode.tensor(dim))
+
+        for param in nn.parameters():
+            compiler.add_globl_var(param.tensor.name)
+            compiler.allocated.add(param.tensor.name)
+
+        for arg in inputs:
+            compiler.add_arg(arg.tensor.name)
+            compiler.allocated.add(arg.tensor.name)
+
+        y_pred = nn.forward(*inputs)
+        loss = loss_fn(y_pred, y)
+        loss.backward()
+
+        ret = []
+        for param in nn.parameters():
+            grad = param.grad
+            assert isinstance(grad, Variable)
+            ret.append(param.grad.name)
+
+        compiler.add_ret_stmt(ret)
+        return compiler
+    else:
+        raise NotImplementedError  
