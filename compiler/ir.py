@@ -57,8 +57,12 @@ class Compiler:
         self.instructions.append((op.value, output, inputs))
 
     def add_ret_stmt(self, ret):
-        self.instructions.append(('return', ret[0], []))
-        self.ret = ret
+        if ret:
+            self.instructions.append(('return', ret[0], []))
+            self.ret = ret
+        else:
+            self.instructions.append(('return', None, []))
+            self.ret = None
 
     def add_globl_var(self, name: str):
         if name not in self.shapes:
@@ -133,6 +137,11 @@ class Instruction():
         Operator.MUL: 'mulf',
     }
 
+    _mlir_cmp_op = {
+        Operator.GT: 'ogt',
+        Operator.LT: 'olt',
+    }
+
     def __init__(self, op: Operator, output: str, inputs: list[str], compiler = None):
         self.op = op
         self.output = output
@@ -151,6 +160,9 @@ class Instruction():
     def generate_mlir(self, indent: int = 2) -> str:
         if self.compiler is None:
             raise ValueError('Compiler not set')
+
+        if self.op == Operator.RETURN and self.compiler.ret is None:
+            return ('\t' * indent) + "return\n"
 
         ret = ""
         for node in self.inputs:
@@ -214,6 +226,64 @@ class Instruction():
                 ret += '}\n'
 
             # the result is in self.output.
+        elif self.op in self._mlir_cmp_op:
+            lh, rh = self.inputs[0], self.inputs[1]
+            output = self.output
+            output_shape = self.compiler.shapes[output]
+
+            lh_shape = self.compiler.shapes[lh]
+            if len(lh_shape) < len(output_shape):
+                lh_shape_ext = [1 for _ in range(len(output_shape) - len(lh_shape))] + lh_shape
+            else:
+                lh_shape_ext = lh_shape
+
+            rh_shape = self.compiler.shapes[rh]
+            if len(rh_shape) < len(output_shape):
+                rh_shape_ext = [1 for _ in range(len(output_shape) - len(rh_shape))] + rh_shape
+            else:
+                rh_shape_ext = rh_shape
+
+            for i in range(len(output_shape)):
+                ret += '\t' * indent
+                # affine.for %arg0 = 0 to 4 {
+                #     affine.for %arg1 = 0 to 3 {
+                # ...
+                ret += f'affine.for %arg{i} = 0 to {output_shape[i]} ' + '{\n'
+                indent += 1
+
+            # %s_zero = arith.constant 0.0 : f32
+            ret += '\t' * indent + '%s_zero = arith.constant 0.0 : f32\n'
+            # %s_one = arith.constant 1.0 : f32
+            ret += '\t' * indent + '%s_one = arith.constant 1.0 : f32\n'
+
+            # %s0 = memref.load %a[%arg0, 0] : memref<4x1xf32>
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {lh}' + self._mlir_index(output_shape, lh_shape_ext)
+            ret += ' : memref' + self._mlir_shape(lh_shape) + '\n'
+
+            # %s1 = memref.load %a[0, %arg1] : memref<1x3xf32>
+            ret += '\t' * indent
+            ret += f'%s1 = memref.load {rh}' + self._mlir_index(output_shape, rh_shape_ext)
+            ret += ' : memref' + self._mlir_shape(rh_shape) + '\n'
+
+            # %s2 = arith.cmpf %s0, [ogt|olt] %s1 : f32
+            ret += '\t' * indent
+            ret += f'%s2 = arith.cmpf {self._mlir_cmp_op[self.op]}, %s0, %s1 : f32\n'
+
+            # %s3 = arith.select %s2, %s_zero, %s_one : f32
+            ret += '\t' * indent
+            ret += '%s3 = arith.select %s2, %s_zero, %s_one : f32\n'
+
+            # memref.store %s3, %output[...] : memref<...>
+            ret += '\t' * indent
+            ret += f'memref.store %s3, {output}' + self._mlir_index(output_shape, output_shape)
+            ret += ' : memref' + self._mlir_shape(output_shape) + '\n'
+
+            for i in range(len(output_shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += '}\n'
+
         elif self.op == Operator.TRANSPOSE:
             a, b = tuple(self.compiler.shapes[self.inputs[0]])
             output_shape = [b, a]
@@ -313,9 +383,99 @@ class Instruction():
                 indent -= 1
                 ret += '\t' * indent
                 ret += "}\n"
+        elif self.op == Operator.RELU:
+            in_shape = self.compiler.shapes[self.inputs[0]]
+            output_shape = in_shape
+            in_var = self.inputs[0]
+            out_var = self.output
+
+            for i in range(len(output_shape)):
+                ret += '\t' * indent
+                # affine.for %arg0 = 0 to 4 {
+                #     affine.for %arg1 = 0 to 3 {
+                # ...
+                ret += f'affine.for %arg{i} = 0 to {output_shape[i]} ' + '{\n'
+                indent += 1
+
+            # %s_zero = arith.constant 0.0 : f32
+            ret += '\t' * indent
+            ret += '%s_zero = arith.constant 0.0 : f32\n'
+
+            # %s0 = memref.load %in_var[%arg0, ... %argn] : memref<...xf32>
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {in_var}' + self._mlir_index(output_shape, in_shape)
+            ret += ' : memref' + self._mlir_shape(in_shape) + '\n'
+
+            # %s1 = arith.maxf %s_zero, %s0 : f32
+            ret += '\t' * indent
+            ret +=  f'%s1 = arith.maxf %s_zero, %s0 : f32\n'
+
+            # memref.store %s1, %out_var[%arg0, ... %argn] : memref<...xf32>
+            ret += '\t' * indent
+            ret += f'memref.store %s1, {out_var}' + self._mlir_index(output_shape, in_shape)
+            ret += f' : {Mlir.typename(output_shape)}\n'
+
+            for i in range(len(output_shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += "}\n"
         elif self.op == Operator.RESHAPE:
             ret += '\t' * indent
             ret += '// FIXME: reshape is not implemented. Coming soon\n'
+
+            in_var = self.inputs[0]
+            out_var = self.output
+            in_shape = self.compiler.shapes[in_var]
+            out_shape = self.compiler.shapes[out_var]
+
+            #
+            # set all elements of `output` to 0.0
+            #
+            for i in range(len(out_shape)):
+                ret += '\t' * indent
+                ret += f'affine.for %arg{i} = 0 to {out_shape[i]}' + ' {\n'
+                indent += 1
+            
+            # %s_zero = arithm.constant 0.0 : f32
+            ret += '\t' * indent
+            ret += f'%s_zero = arith.constant 0.0 : f32\n'
+            # memref.store %s_zero, %output[%arg0, ..., %argN] : memref<*xf32>
+            ret += '\t' * indent
+            ret += f'memref.store %s_zero, {out_var}{self._mlir_index(out_shape, out_shape)}'
+            ret += f" : {Mlir.typename(out_shape)}\n"
+
+            for i in range(len(out_shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += '}\n'
+
+            # 
+            # add
+            #
+            for i in range(len(out_shape)):
+                ret += '\t' * indent
+                ret += f'affine.for %arg{i} = 0 to {out_shape[i]}' + ' {\n'
+                indent += 1
+
+            # %s0 = memref.load %output[%arg0, ..., %argn] : memref<...>
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {out_var}{self._mlir_index(out_shape, out_shape)} : {Mlir.typename(out_shape)}\n'
+            # %s1 = memref.load %input[%arg0, ..., %argn] : memref<...>
+            ret += '\t' * indent
+            ret += f'%s1 = memref.load {in_var}{self._mlir_index(out_shape, in_shape)} : {Mlir.typename(in_shape)}\n'
+
+            # %s2 = arith.addf %s0, %s1 : f32
+            ret += '\t' * indent
+            ret += '%s2 = arith.addf %s0, %s1 : f32\n'
+            # memref.store %s2, %output[%arg0, ..., %argN] : memref<*xf32>
+            ret += '\t' * indent
+            ret += f'memref.store %s2, {out_var}{self._mlir_index(out_shape, out_shape)}'
+            ret += f" : {Mlir.typename(out_shape)}\n"
+
+            for i in range(len(out_shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += '}\n'
         elif self.op == Operator.RETURN:
             ret += '\t' * indent
 
@@ -444,6 +604,7 @@ class Variable():
         ret = Variable(x.shape)
         if isinstance(CompilerContext.compiler, Compiler):
             CompilerContext.compiler.add_insn(Operator.RELU, ret.name, x.name)
+        return ret
 
     @staticmethod
     def grad_reshape(x, shape):
