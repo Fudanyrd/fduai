@@ -29,23 +29,23 @@ def generate_mlir(compiler=None, funcname: str = 'start',
         ret_note = ''
     
     arg_list = "("
-    args = list(compiler.args)
+    args = list(compiler.globl_var) + list(compiler.args)
     for i in range(len(args)):
         arg = args[i]
         if i:
-            arg_list += ", "
+            arg_list += ",\n\t\t"
         arg_list += arg + ": memref" + Instruction._mlir_shape(compiler.shapes[arg])
     arg_list += ")"
 
     if is_module:
-        ir = "module {\n"
-        for var in compiler.globl_var:
-            shape = compiler.shapes[var]
-            ir += f"\t{var} = memref.alloc(): memref" + Instruction._mlir_shape(shape)
-            ir += "\n"
-        ir += "\tfunc.func @" + funcname + arg_list + ret_note + " {\n"
+        ir = "module {\n\t"
     else:
-        ir = "func.func @" + funcname + arg_list + ret_note + " {\n"
+        ir = ""
+    ir += "func.func @" + funcname + arg_list + ret_note + " {\n"
+    # reserve %zero for index
+    if is_module:
+        ir += '\t'
+    ir += '\t%zero = arith.constant 0 : index\n'
 
     for ins in compiler.instructions:
         op, output, inputs = ins

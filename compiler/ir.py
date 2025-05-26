@@ -16,9 +16,9 @@ class Compiler:
         self.instructions = []
 
         self.allocated = set()
-        self.globl_var = set()
+        self.globl_var = []
 
-        self.args = set()
+        self.args = []
         self.ret = None
 
         self.prev = False
@@ -52,13 +52,15 @@ class Compiler:
         if name not in self.shapes:
             raise RuntimeError(f'Global variable {name} not found')
 
-        self.globl_var.add(name)
+        if name not in self.globl_var:
+            self.globl_var.append(name)
 
     def add_arg(self, name: str):
         if name not in self.shapes:
             raise RuntimeError(f'Argument {name} not found')
 
-        self.args.add(name)
+        if name not in self.args:
+            self.args.append(name)
 
     def __exit__(self, *args):
         CompilerContext.compiling = self.prev
@@ -131,7 +133,7 @@ class Instruction():
 
     @staticmethod
     def _mlir_index(output_shape, input_shape) -> str:
-        indices = ['0' if input_shape[i] == 1 else f'%arg{i}' for i in range(len(output_shape))]
+        indices = ['%zero' if input_shape[i] == 1 else f'%arg{i}' for i in range(len(output_shape))]
         return '[' + ', '.join(indices) + ']'
 
     def generate_mlir(self, indent: int = 2) -> str:
@@ -172,7 +174,7 @@ class Instruction():
                 # affine.for %arg0 = 0 to 4 {
                 #     affine.for %arg1 = 0 to 3 {
                 # ...
-                ret += f'affine.for arg{i} = 0 to {output_shape[i]} ' + '{\n'
+                ret += f'affine.for %arg{i} = 0 to {output_shape[i]} ' + '{\n'
                 indent += 1
 
             # %s0 = memref.load %a[%arg0, 0] : memref<4x1xf32>
