@@ -2,6 +2,7 @@ from .ir import Variable, Instruction, DType
 from .ir import Compiler, CompilerContext
 from .ir import Instruction
 from common import Operator
+from common import Mlir
 
 
 import json
@@ -23,8 +24,8 @@ def generate_mlir(compiler=None, funcname: str = 'start',
         raise RuntimeError('No compiler found')
 
     if compiler.ret:
-        ret_shape = compiler.shapes[compiler.ret]
-        ret_note = ' -> memref' + Instruction._mlir_shape(ret_shape)
+        ret_shape = compiler.retshape()
+        ret_note = ' -> ' + Mlir.rettype(ret_shape)
     else:
         ret_note = ''
     

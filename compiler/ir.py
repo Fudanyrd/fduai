@@ -3,6 +3,7 @@ from enum import Enum
 import re
 
 from common import Operator
+from common import Mlir
 
 class CompilerContext:
     compiling: bool = False
@@ -19,7 +20,7 @@ class Compiler:
         self.globl_var = []
 
         self.args = []
-        self.ret = None
+        self.ret = []
 
         self.prev = False
         self.prev_compiler = None
@@ -37,6 +38,13 @@ class Compiler:
 
         return self
 
+    def retshape(self):
+        ret = []
+        for var in self.ret:
+            ret.append(self.shapes[var])
+
+        return ret
+
     def add_insn(self, op: Operator, output, *inputs):
         if output not in self.vars:
             self.vars.append(output)
@@ -45,8 +53,12 @@ class Compiler:
                 self.vars.append(input)
         
         if op == Operator.RETURN:
-            self.ret = output
+            self.ret = [output]
         self.instructions.append((op.value, output, inputs))
+
+    def add_ret_stmt(self, ret):
+        self.instructions.append(('return', ret[0], []))
+        self.ret = ret
 
     def add_globl_var(self, name: str):
         if name not in self.shapes:
@@ -225,11 +237,11 @@ class Instruction():
 
             #        %s = memref.load %input[%arg0, %arg1] : memref<axbxf32>
             ret += '\t' * indent
-            ret += f'%s = memref.load %input[%arg0, %arg1] : memref<{a}x{b}f32>\n'
+            ret += f'%s = memref.load {self.inputs[0]}[%arg0, %arg1] : memref<{a}x{b}xf32>\n'
 
             #        memref.store %s, %output[%arg1, %arg0] : memref<bxaxf32>
             ret += '\t' * indent
-            ret += f'memref.store %s, %output[%arg1, %arg0] : memref<{b}x{a}f32>\n'
+            ret += f'memref.store %s, {self.output}[%arg1, %arg0] : memref<{b}x{a}xf32>\n'
 
             indent -= 1
             ret += '\t' * indent
@@ -265,13 +277,51 @@ class Instruction():
                 ret += line
 
             del lines
+        elif self.op == Operator.NEG:
+            in_shape = self.compiler.shapes[self.inputs[0]]
+            output_shape = in_shape
+            in_var = self.inputs[0]
+            out_var = self.output
+
+            for i in range(len(output_shape)):
+                ret += '\t' * indent
+                # affine.for %arg0 = 0 to 4 {
+                #     affine.for %arg1 = 0 to 3 {
+                # ...
+                ret += f'affine.for %arg{i} = 0 to {output_shape[i]} ' + '{\n'
+                indent += 1
+
+            # %s_zero = arith.constant 0.0 : f32
+            ret += '\t' * indent
+            ret += '%s_zero = arith.constant 0.0 : f32\n'
+
+            # %s0 = memref.load %in_var[%arg0, ... %argn] : memref<...xf32>
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {in_var}' + self._mlir_index(output_shape, in_shape)
+            ret += ' : memref' + self._mlir_shape(in_shape) + '\n'
+
+            # %s1 = arith.subf %s_zero, %s0 : f32
+            ret += '\t' * indent
+            ret +=  f'%s1 = arith.subf %s_zero, %s0 : f32\n'
+
+            # memref.store %s1, %out_var[%arg0, ... %argn] : memref<...xf32>
+            ret += '\t' * indent
+            ret += f'memref.store %s1, {out_var}' + self._mlir_index(output_shape, in_shape)
+            ret += f' : {Mlir.typename(output_shape)}\n'
+
+            for i in range(len(output_shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += "}\n"
+        elif self.op == Operator.RESHAPE:
+            ret += '\t' * indent
+            ret += '// FIXME: reshape is not implemented. Coming soon\n'
         elif self.op == Operator.RETURN:
             ret += '\t' * indent
 
             # return %ret : memref<2x2xf32>
             var = self.compiler.ret
-            shape = self.compiler.shapes[var]
-            ret += f"return {var} : memref{self._mlir_shape(shape)}\n"
+            ret += f"return {Mlir.retstmt(var, self.compiler.retshape())}\n"
         else:
             raise NotImplementedError(f'Instruction {self.op.value} not implemented')
 
@@ -400,6 +450,7 @@ class Variable():
         ret = Variable(shape)
         if isinstance(CompilerContext.compiler, Compiler):
             CompilerContext.compiler.add_insn(Operator.RESHAPE, ret.name, x.name)
+        return ret
 
     def memory(self) -> int:
         """
