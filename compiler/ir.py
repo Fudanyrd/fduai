@@ -154,8 +154,13 @@ class Instruction():
 
     @staticmethod
     def _mlir_index(output_shape, input_shape) -> str:
-        indices = ['%zero' if input_shape[i] == 1 else f'%arg{i}' for i in range(len(output_shape))]
-        return '[' + ', '.join(indices) + ']'
+        assert len(output_shape) >= len(input_shape)
+        d = len(output_shape) - len(input_shape)
+        ret = []
+        for i in range(len(output_shape) - 1, d - 1, -1):
+            ret.append(f'%arg{i}' if input_shape[i - d] > 1 else '%zero')
+        ret.reverse()
+        return '[' + ', '.join(ret) + ']'
 
     def generate_mlir(self, indent: int = 2) -> str:
         if self.compiler is None:
@@ -182,16 +187,7 @@ class Instruction():
             # %output = memref.alloc() : output.shape
 
             lh_shape = self.compiler.shapes[self.inputs[0]]
-            if len(lh_shape) < len(output_shape):
-                lh_shape_ext = [1 for _ in range(len(output_shape) - len(lh_shape))] + lh_shape
-            else:
-                lh_shape_ext = lh_shape
-
             rh_shape = self.compiler.shapes[self.inputs[1]]
-            if len(rh_shape) < len(output_shape):
-                rh_shape_ext = [1 for _ in range(len(output_shape) - len(rh_shape))] + rh_shape
-            else:
-                rh_shape_ext = rh_shape
 
             for i in range(len(output_shape)):
                 ret += '\t' * indent
@@ -203,12 +199,12 @@ class Instruction():
 
             # %s0 = memref.load %a[%arg0, 0] : memref<4x1xf32>
             ret += '\t' * indent
-            ret += f'%s0 = memref.load {self.inputs[0]}' + self._mlir_index(output_shape, lh_shape_ext)
+            ret += f'%s0 = memref.load {self.inputs[0]}' + self._mlir_index(output_shape, lh_shape)
             ret += ' : memref' + self._mlir_shape(lh_shape) + '\n'
 
             # %s1 = memref.load %a[0, %arg1] : memref<1x3xf32>
             ret += '\t' * indent
-            ret += f'%s1 = memref.load {self.inputs[1]}' + self._mlir_index(output_shape, rh_shape_ext)
+            ret += f'%s1 = memref.load {self.inputs[1]}' + self._mlir_index(output_shape, rh_shape)
             ret += ' : memref' + self._mlir_shape(rh_shape) + '\n'
 
             # %s2 = arith.addf %s0, %s1 : f32
@@ -232,16 +228,7 @@ class Instruction():
             output_shape = self.compiler.shapes[output]
 
             lh_shape = self.compiler.shapes[lh]
-            if len(lh_shape) < len(output_shape):
-                lh_shape_ext = [1 for _ in range(len(output_shape) - len(lh_shape))] + lh_shape
-            else:
-                lh_shape_ext = lh_shape
-
             rh_shape = self.compiler.shapes[rh]
-            if len(rh_shape) < len(output_shape):
-                rh_shape_ext = [1 for _ in range(len(output_shape) - len(rh_shape))] + rh_shape
-            else:
-                rh_shape_ext = rh_shape
 
             for i in range(len(output_shape)):
                 ret += '\t' * indent
@@ -258,12 +245,12 @@ class Instruction():
 
             # %s0 = memref.load %a[%arg0, 0] : memref<4x1xf32>
             ret += '\t' * indent
-            ret += f'%s0 = memref.load {lh}' + self._mlir_index(output_shape, lh_shape_ext)
+            ret += f'%s0 = memref.load {lh}' + self._mlir_index(output_shape, lh_shape)
             ret += ' : memref' + self._mlir_shape(lh_shape) + '\n'
 
             # %s1 = memref.load %a[0, %arg1] : memref<1x3xf32>
             ret += '\t' * indent
-            ret += f'%s1 = memref.load {rh}' + self._mlir_index(output_shape, rh_shape_ext)
+            ret += f'%s1 = memref.load {rh}' + self._mlir_index(output_shape, rh_shape)
             ret += ' : memref' + self._mlir_shape(rh_shape) + '\n'
 
             # %s2 = arith.cmpf %s0, [ogt|olt] %s1 : f32
