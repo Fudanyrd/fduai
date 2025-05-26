@@ -57,7 +57,7 @@ def compile_nn(nn: nn, input_dims) -> Compiler:
     else:
         raise NotImplementedError
 
-def compile_backward(nn: nn, loss_fn, y, input_dims) -> Compiler:
+def compile_backward(nn: nn, loss_fn, y_shape, input_dims) -> Compiler:
     if CompilerContext.compiler:
         compiler = CompilerContext.compiler
 
@@ -68,6 +68,10 @@ def compile_backward(nn: nn, loss_fn, y, input_dims) -> Compiler:
         for param in nn.parameters():
             compiler.add_globl_var(param.tensor.name)
             compiler.allocated.add(param.tensor.name)
+
+        y = DataNode.tensor(y_shape)
+        compiler.add_arg(y.tensor.name)
+        compiler.allocated.add(y.tensor.name)
 
         for arg in inputs:
             compiler.add_arg(arg.tensor.name)
