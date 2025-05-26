@@ -34,6 +34,15 @@ class linear(nn):
         x = inputs[0]
         return DataNode.matmul(x, self.w) + self.b
 
+class relu(nn):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, *inputs):
+        assert len(inputs) == 1, 'Incorrect number of inputs'
+        x = inputs[0]
+        return DataNode.relu(x)
+
 def compile_nn(nn: nn, input_dims) -> Compiler:
     if CompilerContext.compiler:
         compiler = CompilerContext.compiler

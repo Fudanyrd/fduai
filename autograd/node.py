@@ -172,7 +172,8 @@ class DataNode():
 
     @staticmethod 
     def relu(x):
-        ret = DataNode(Tensor.relu(x.tensor), requires_grad=x.requires_grad)
+        TT = type(x.tensor)
+        ret = DataNode(TT.relu(x.tensor), requires_grad=x.requires_grad)
 
         ret.op = Operator.RELU
         ret.inputs = [x]
