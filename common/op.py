@@ -19,6 +19,7 @@ class Operator(Enum):
     RELU = 'ReLU'
     RESHAPE = 'reshape'
     RETURN = 'return'
+    INIT = 'init'
 
 
     @staticmethod
@@ -39,6 +40,7 @@ class Operator(Enum):
             'ReLU': Operator.RELU,
             'reshape': Operator.RESHAPE,
             "return": Operator.RETURN,
+            "init": Operator.INIT,
         }
 
         return d[value]

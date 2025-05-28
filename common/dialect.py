@@ -1,5 +1,11 @@
 
 class Mlir():
+    """
+    See also:  
+    memref dialect: https://mlir.llvm.org/docs/Dialects/MemRef/  
+    arith dialect: https://mlir.llvm.org/docs/Dialects/Arith/  
+    mlir language reference: https://mlir.llvm.org/docs/LangRef/  
+    """
     @staticmethod 
     def shape(shape, dtype='f32') -> str:
         return '<' + 'x'.join([str(x) for x in shape]) + f'x{dtype}>'
