@@ -1,6 +1,7 @@
 import json
 from enum import Enum
 import re
+import numpy as np
 
 from common import Operator
 from common import Mlir
@@ -162,12 +163,57 @@ class Instruction():
         ret.reverse()
         return '[' + ', '.join(ret) + ']'
 
+    def _mlir_init(self, ir: list, var, data, idx: list = [], indent: int = 2):
+        #
+        # FIXME: our implementation of `init` copies each entry
+        # to the output. This is not efficient. TO OUR KNOWLEDGE,
+        # there is not a simplier way to do this.
+        #
+        shape = self.compiler.shapes[var]
+        if len(idx) == len(shape):
+            ret = '\t' * indent
+            ret += 'affine.for %tmp = 0 to 1 {\n'
+
+            indent += 1
+            for i in range(len(idx)):
+                ret += '\t' * indent
+                ret += f'%arg{i} = arith.constant {idx[i]} : index\n'
+
+            ret += '\t' * indent
+            ret += f'%s = arith.constant {float(data)} : f32\n'
+
+            ret += '\t' * indent
+            ret += f'memref.store %s, {var}{self._mlir_index(shape, idx)} : memref{self._mlir_shape(shape)}\n'
+
+            indent -= 1
+            ret += '\t' * indent
+            ret += "}\n"
+            ir.append(ret)
+            return
+
+        for i in range(len(data)):
+            self._mlir_init(ir, var, data[i], idx + [i], indent)
+
     def generate_mlir(self, indent: int = 2) -> str:
         if self.compiler is None:
             raise ValueError('Compiler not set')
 
         if self.op == Operator.RETURN and self.compiler.ret is None:
             return ('\t' * indent) + "return\n"
+
+        if self.op == Operator.INIT:
+            if self.output not in self.compiler.allocated:
+                self.compiler.allocated.add(self.output)
+
+                # add an instruction that allocates the memory
+                ins = '\t' * indent
+                shape = self.compiler.shapes[self.output]
+                ins += f'{self.output} = memref.alloc() : memref{self._mlir_shape(shape)}\n'
+                buf = [ins]
+            else:
+                buf = []
+            self._mlir_init(buf, self.output, self.inputs[0], idx=[], indent=indent)
+            return ''.join(buf)
 
         ret = ""
         for node in self.inputs:
@@ -483,6 +529,8 @@ class Variable():
         Variable.count += 1
 
         self.device = None
+        # self.data: list | np.ndarray = None
+        self.data: list = None
 
         if isinstance(CompilerContext.compiler, Compiler):
             CompilerContext.compiler.shapes[self.name] = self.shape
@@ -494,6 +542,40 @@ class Variable():
     @staticmethod 
     def ones(shape: list[int], device=None):
         return Variable(shape)
+
+    @staticmethod
+    def random_seed(seed: int = 42):
+        """
+        :param seed: The seed to use for random number generation.
+        """
+        np.random.seed(seed)    
+
+    @staticmethod
+    def uniform(shape: list[int], xmin: float = 0.0, 
+                xmax: float = 1.0, device=None):
+        data = np.random.uniform(xmin, xmax, tuple(shape)).tolist()
+        return Variable.from_list(shape, data)
+
+    @staticmethod 
+    def _check_shape(shape: list[int], data: list, idx: int = 0):
+        if idx >= len(shape):
+            return
+        if len(data) != shape[idx]:
+            raise ValueError(f'Incompatible shape: {shape} and {data}')
+
+        for i in range(len(data)):
+            Variable._check_shape(shape, data[i], idx + 1)
+
+    @staticmethod 
+    def from_list(shape: list[int], data: list, device=None):
+        Variable._check_shape(shape, data)
+        ret = Variable(shape)
+        ret.data = data
+
+        compiler = CompilerContext.compiler
+        if isinstance(compiler, Compiler):
+            compiler.add_insn(Operator.INIT, ret.name, data)
+        return ret
 
     def __str__(self):
         return self.name
