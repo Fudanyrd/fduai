@@ -20,12 +20,27 @@ class DataNode():
 
     @staticmethod 
     def zeros(shape: list[int], requires_grad: bool = True, device=Device.CPU):
-        t = Variable(shape) if CompilerContext.compiling else Tensor.zeros(shape, device)
+        t = Variable.zeros(shape) if CompilerContext.compiling else Tensor.zeros(shape, device)
         return DataNode(t, requires_grad)
 
     @staticmethod 
     def ones(shape: list[int], requires_grad: bool = True, device=Device.CPU):
-        t = Variable(shape) if CompilerContext.compiling else Tensor.ones(shape, device)
+        t = Variable.ones(shape) if CompilerContext.compiling else Tensor.ones(shape, device)
+        return DataNode(t, requires_grad)
+
+    @staticmethod
+    def uniform(shape: list[int], xmin: float = 0.0, xmax: float = 1.0,
+                requires_grad: bool = True):
+        if not CompilerContext.compiling:
+            raise ValueError("uniform is not implemented for Tensor.")
+        t = Variable.uniform(shape, xmin, xmax)
+        return DataNode(t, requires_grad)
+
+    @staticmethod 
+    def from_list(shape: list[int], data: list, requires_grad: bool = True,
+                  device=Device.CPU):
+        t = Variable.from_list(shape, data) if CompilerContext.compiling \
+            else Tensor.from_list(data)
         return DataNode(t, requires_grad)
 
     def shape(self):
@@ -97,7 +112,7 @@ class DataNode():
     def backward(self, grad=None):
         no_grad = grad is None
         if CompilerContext.compiling:
-            grad = Variable(self.shape()) if grad is None else grad
+            grad = Variable.ones(self.shape()) if grad is None else grad
         else:
             grad = Tensor.ones(self.shape(), self.tensor.device) if grad is None else grad
         
