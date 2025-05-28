@@ -53,6 +53,103 @@ module {
 		}
 
 		%v8 = memref.alloc() : memref<16x1xf32>
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 0 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%zero, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 1 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%zero, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 2 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 3 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 4 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 5 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 6 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 7 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 8 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 9 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 10 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 11 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 12 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 13 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 14 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+		affine.for %tmp = 0 to 1 {
+			%arg0 = arith.constant 15 : index
+			%arg1 = arith.constant 0 : index
+			%s = arith.constant 1.0 : f32
+			memref.store %s, %v8[%arg0, %zero] : memref<16x1xf32>
+		}
+
 		%v9 = memref.alloc() : memref<16x1xf32>
 		affine.for %arg0 = 0 to 16 {
 			affine.for %arg1 = 0 to 1 {
@@ -95,6 +192,20 @@ module {
 
 		%v13 = memref.alloc() : memref<1x1xf32>
 		// FIXME: reshape is not implemented. Coming soon
+		affine.for %arg0 = 0 to 1 {
+			affine.for %arg1 = 0 to 1 {
+				%s_zero = arith.constant 0.0 : f32
+				memref.store %s_zero, %v13[%zero, %zero] : memref<1x1xf32>
+			}
+		}
+		affine.for %arg0 = 0 to 1 {
+			affine.for %arg1 = 0 to 1 {
+				%s0 = memref.load %v13[%zero, %zero] : memref<1x1xf32>
+				%s1 = memref.load %v11[%arg0, %zero] : memref<16x1xf32>
+				%s2 = arith.addf %s0, %s1 : f32
+				memref.store %s2, %v13[%zero, %zero] : memref<1x1xf32>
+			}
+		}
 
 		%v14 = memref.alloc() : memref<1x10xf32>
 		affine.for %arg0 = 0 to 10 {
@@ -186,6 +297,20 @@ module {
 
 		%v22 = memref.alloc() : memref<1x1xf32>
 		// FIXME: reshape is not implemented. Coming soon
+		affine.for %arg0 = 0 to 1 {
+			affine.for %arg1 = 0 to 1 {
+				%s_zero = arith.constant 0.0 : f32
+				memref.store %s_zero, %v22[%zero, %zero] : memref<1x1xf32>
+			}
+		}
+		affine.for %arg0 = 0 to 1 {
+			affine.for %arg1 = 0 to 1 {
+				%s0 = memref.load %v22[%zero, %zero] : memref<1x1xf32>
+				%s1 = memref.load %v18[%arg0, %zero] : memref<16x1xf32>
+				%s2 = arith.addf %s0, %s1 : f32
+				memref.store %s2, %v22[%zero, %zero] : memref<1x1xf32>
+			}
+		}
 
 		%v23 = memref.alloc() : memref<1x1xf32>
 		affine.for %arg0 = 0 to 1 {
