@@ -31,6 +31,15 @@ __global__ void negKernel(const float *a, float *result, int num_elements)
     }
 }
 
+__global__ void reluKernel(const float *a, float *result, int num_elements)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements)
+    {
+        result[idx] = a[idx] > 0 ? a[idx] : 0.0f; // ReLU activation
+    }
+}
+
 // CUDA kernel for matrix multiplication
 __global__ void matmulKernel(const float *a, const float *b, float *c, int m, int n, int p)
 {
@@ -392,6 +401,28 @@ Tensor Tensor::cuda_neg(const Tensor &a)
     return result;
 }
 
+Tensor Tensor::cuda_relu(const Tensor &a)
+{
+    Tensor result(a.shape, Device::CUDA);
+    int num_elements = a.num_elements;
+
+    // Kernel launch parameters
+    int threads_per_block = 256;
+    int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
+
+    // Launch the kernel
+    reluKernel<<<blocks_per_grid, threads_per_block>>>(a.data, result.data, num_elements);
+
+    // Check for any kernel launch errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        throw std::runtime_error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(err)));
+    }
+
+    return result;
+}
+
 Tensor Tensor::cuda_dot(const Tensor &a, const Tensor &b)
 {
     // Verify input tensors are 2D
@@ -479,10 +510,22 @@ Tensor Tensor::cuda_transpose(const Tensor &a)
 
 float Tensor::cuda_sum_all(const Tensor &a)
 {
+    //
+    // FIXME
+    //
+    const float *data = a.data;
+    const int n_elem = a.num_elements;
+    Tensor ret({1}, Device::CUDA);
+    *ret.data = 0.0f;
+
+    dim3 block_size(32, 32, 1);
     throw std::runtime_error("CUDA sum_all not implemented yet");
 }
 
 float Tensor::cuda_max_all(const Tensor &a)
 {
+    //
+    // FIXME
+    //
     throw std::runtime_error("CUDA max_all not implemented yet");
 }

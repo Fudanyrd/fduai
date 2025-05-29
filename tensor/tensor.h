@@ -348,6 +348,8 @@ struct Tensor
     static Tensor relu(const Tensor &a) {
         if (a.device == Device::CPU) {
             return cpu_relu(a);
+        } else if (a.device == Device::CUDA) {
+            return cuda_relu(a);
         }
         throw std::invalid_argument("CUDA relu is not implemented yet");
     }
@@ -585,12 +587,7 @@ private:
     static float cuda_max_all(const Tensor &a);
 
     static Tensor cpu_relu(const Tensor &a);
-    static Tensor cuda_relu(const Tensor &a) {
-        //
-        // FIXME: CUDA relu is not implemented yet
-        //
-        throw std::invalid_argument("CUDA relu not implemented yet");
-    }
+    static Tensor cuda_relu(const Tensor &a);
 
     static Tensor cpu_grad_reshape(const Tensor &a, const std::vector<int> &shape);
 
