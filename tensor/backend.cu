@@ -125,6 +125,17 @@ __global__ void broadcastOpKernel(const float *a, const float *b, float *result,
     }
 }
 
+template <typename Op>
+__global__ void tensorScalarOpKernel(const float *a, const 
+    float scalar, float *result, int num_elements, Op op)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < num_elements)
+    {
+        result[idx] = op(a[idx], scalar);
+    }
+}
+
 // Operations for the kernels
 struct AddOp
 {
@@ -433,6 +444,42 @@ Tensor Tensor::cuda_lt(const Tensor &a, const Tensor &b)
     cudaFree(d_a_shape);
     cudaFree(d_b_shape);
     cudaFree(d_result_shape);
+
+    return result;
+}
+
+Tensor Tensor::cuda_add_scalar(const Tensor &a, float &b)
+{
+    Tensor result(a.shape, Device::CUDA);
+    tensorScalarOpKernel<<<(a.num_elements + 255) / 256, 256>>>(
+        a.data, b, result.data, a.num_elements, AddOp());
+
+    return result;
+}
+
+Tensor Tensor::cuda_sub_scalar(const Tensor &a, float &b)
+{
+    Tensor result(a.shape, Device::CUDA);
+    tensorScalarOpKernel<<<(a.num_elements + 255) / 256, 256>>>(
+        a.data, b, result.data, a.num_elements, SubOp());
+
+    return result;
+}
+
+Tensor Tensor::cuda_mul_scalar(const Tensor &a, float &b)
+{
+    Tensor result(a.shape, Device::CUDA);
+    tensorScalarOpKernel<<<(a.num_elements + 255) / 256, 256>>>(
+        a.data, b, result.data, a.num_elements, MulOp());
+
+    return result;
+}
+
+Tensor Tensor::cuda_div_scalar(const Tensor &a, float &b)
+{
+    Tensor result(a.shape, Device::CUDA);
+    tensorScalarOpKernel<<<(a.num_elements + 255) / 256, 256>>>(
+        a.data, b, result.data, a.num_elements, DivOp());
 
     return result;
 }
