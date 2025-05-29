@@ -146,6 +146,16 @@ struct DivOp
     __device__ float operator()(float a, float b) const { return a / b; }
 };
 
+struct LtOp
+{
+    __device__ float operator()(float a, float b) const { return a < b ? 1.0f : 0.0f; }
+};
+
+struct GtOp
+{
+    __device__ float operator()(float a, float b) const { return a > b ? 1.0f : 0.0f; }
+};
+
 // Helper function to check if two shapes can be broadcast and get the result shape
 bool cuda_can_broadcast(const std::vector<int> &a_shape, const std::vector<int> &b_shape, std::vector<int> &result_shape)
 {
@@ -363,6 +373,54 @@ Tensor Tensor::cuda_div(const Tensor &a, const Tensor &b)
         d_b_shape, b.shape.size(),
         d_result_shape, result_shape.size(),
         num_elements, DivOp());
+
+    // Check for any kernel launch errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess)
+    {
+        throw std::runtime_error("CUDA kernel launch failed: " + std::string(cudaGetErrorString(err)));
+    }
+
+    // Free device memory
+    cudaFree(d_a_shape);
+    cudaFree(d_b_shape);
+    cudaFree(d_result_shape);
+
+    return result;
+}
+
+Tensor Tensor::cuda_lt(const Tensor &a, const Tensor &b)
+{
+    std::vector<int> result_shape;
+    if (!cuda_can_broadcast(a.shape, b.shape, result_shape))
+    {
+        throw std::invalid_argument("Shapes of tensors cannot be broadcast together for division");
+    }
+
+    Tensor result(result_shape, Device::CUDA);
+    int num_elements = result.num_elements;
+
+    // Prepare shape arrays for CUDA
+    int *d_a_shape, *d_b_shape, *d_result_shape;
+    cudaMalloc(&d_a_shape, a.shape.size() * sizeof(int));
+    cudaMalloc(&d_b_shape, b.shape.size() * sizeof(int));
+    cudaMalloc(&d_result_shape, result_shape.size() * sizeof(int));
+
+    cudaMemcpy(d_a_shape, a.shape.data(), a.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b_shape, b.shape.data(), b.shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result_shape, result_shape.data(), result_shape.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Kernel launch parameters
+    int threads_per_block = 256;
+    int blocks_per_grid = (num_elements + threads_per_block - 1) / threads_per_block;
+
+    // Launch the kernel
+    broadcastOpKernel<<<blocks_per_grid, threads_per_block>>>(
+        a.data, b.data, result.data,
+        d_a_shape, a.shape.size(),
+        d_b_shape, b.shape.size(),
+        d_result_shape, result_shape.size(),
+        num_elements, LtOp());
 
     // Check for any kernel launch errors
     cudaError_t err = cudaGetLastError();

@@ -538,12 +538,7 @@ private:
         }
     }
     static Tensor cpu_lt(const Tensor &a, const Tensor &b);
-    static Tensor cuda_lt(const Tensor &a, const Tensor &b) {
-        //
-        // FIXME: CUDA le is not implemented yet
-        //
-        throw std::invalid_argument("CUDA le not implemented yet");
-    }
+    static Tensor cuda_lt(const Tensor &a, const Tensor &b);
 
     static Tensor neg(const Tensor &a)
     {
