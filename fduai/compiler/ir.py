@@ -214,6 +214,33 @@ class Instruction():
                 buf = []
             self._mlir_init(buf, self.output, self.inputs[0], idx=[], indent=indent)
             return ''.join(buf)
+        
+        if self.op == Operator.FILL:
+            data: float = float(self.inputs[0])
+            ret = ""
+            shape = self.compiler.shapes[self.output]
+
+            if self.output not in self.compiler.allocated:
+                self.compiler.allocated.add(self.output)
+                ret += '\t' * indent
+                ret += f'{self.output} = memref.alloc() : memref{self._mlir_shape(shape)}\n'
+
+            for i in range(len(shape)):
+                ret += '\t' * indent
+                ret += f'affine.for %arg{i} = 0 to {shape[i]}' + ' {\n'
+                indent += 1
+
+            ret += '\t' * indent
+            ret += f'%s = arith.constant {data} : f32\n'
+            ret += '\t' * indent
+            ret += f'memref.store %s, {self.output}{self._mlir_index(shape, shape)} : memref{self._mlir_shape(shape)}\n'
+
+            for i in range(len(shape)):
+                indent -= 1
+                ret += '\t' * indent
+                ret += '}\n'
+            
+            return ret
 
         ret = ""
         for node in self.inputs:
@@ -534,6 +561,16 @@ class Variable():
 
         if isinstance(CompilerContext.compiler, Compiler):
             CompilerContext.compiler.shapes[self.name] = self.shape
+
+    @staticmethod
+    def fill(shape: list[int], data: float, device=None):
+        ret = Variable(shape)
+
+        compiler = CompilerContext.compiler
+        if isinstance(compiler, Compiler):
+            compiler.add_insn(Operator.FILL, ret.name, data)
+
+        return ret
         
     @staticmethod 
     def zeros(shape: list[int], device=None):

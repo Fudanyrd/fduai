@@ -20,6 +20,7 @@ class Operator(Enum):
     RESHAPE = 'reshape'
     RETURN = 'return'
     INIT = 'init'
+    FILL = 'fill'
 
 
     @staticmethod
@@ -41,6 +42,7 @@ class Operator(Enum):
             'reshape': Operator.RESHAPE,
             "return": Operator.RETURN,
             "init": Operator.INIT,
+            "fill": Operator.FILL,
         }
 
         return d[value]

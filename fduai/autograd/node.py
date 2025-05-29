@@ -28,6 +28,15 @@ class DataNode():
         t = Variable.ones(shape) if CompilerContext.compiling else Tensor.ones(shape, device)
         return DataNode(t, requires_grad)
 
+    @staticmethod 
+    def from_scalar(shape: list[int], scalar: float, requires_grad: bool = True,
+                    device=Device.CPU):
+        if not CompilerContext.compiling:
+            raise NotImplementedError('from_scalar is not implemented for Tensor')
+
+        var = Variable.fill(shape, scalar, device)
+        return DataNode(var, requires_grad)
+
     @staticmethod
     def uniform(shape: list[int], xmin: float = 0.0, xmax: float = 1.0,
                 requires_grad: bool = True):
