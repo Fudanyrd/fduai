@@ -3,8 +3,8 @@ from enum import Enum
 import re
 import numpy as np
 
-from common import Operator
-from common import Mlir
+from fduai.common import Operator
+from fduai.common import Mlir
 
 class CompilerContext:
     compiling: bool = False

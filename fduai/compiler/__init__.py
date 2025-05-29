@@ -1,8 +1,8 @@
 from .ir import Variable, Instruction, DType
 from .ir import Compiler, CompilerContext
 from .ir import Instruction
-from common import Operator
-from common import Mlir
+from fduai.common import Operator
+from fduai.common import Mlir
 
 
 import json

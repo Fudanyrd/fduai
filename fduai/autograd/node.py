@@ -1,6 +1,6 @@
-from tensor import Tensor, Device
-from common import Operator
-from compiler import CompilerContext, Variable
+from fduai.tensor import Tensor, Device
+from fduai.common import Operator
+from fduai.compiler import CompilerContext, Variable
 
 class DataNode():
     topological_order = []

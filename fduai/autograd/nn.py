@@ -1,7 +1,7 @@
 from .node import DataNode
 
-from compiler import Compiler, Variable, CompilerContext
-from common import Operator
+from fduai.compiler import Compiler, Variable, CompilerContext
+from fduai.common import Operator
 
 class nn():
     def __init__(self):
