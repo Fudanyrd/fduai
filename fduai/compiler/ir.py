@@ -574,11 +574,11 @@ class Variable():
         
     @staticmethod 
     def zeros(shape: list[int], device=None):
-        return Variable.from_list(shape, np.zeros(shape).tolist())
+        return Variable.fill(shape, 0.0)
 
     @staticmethod 
     def ones(shape: list[int], device=None):
-        return Variable.from_list(shape, np.ones(shape).tolist())
+        return Variable.fill(shape, 1.0)
 
     @staticmethod
     def random_seed(seed: int = 42):
