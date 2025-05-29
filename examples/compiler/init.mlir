@@ -7,25 +7,25 @@ func.func @start() {
 		%arg0 = arith.constant 0 : index
 		%arg1 = arith.constant 0 : index
 		%s = arith.constant 1.0 : f32
-		memref.store %s, %v0[%zero, %zero] : memref<2x2xf32>
+		memref.store %s, %v0[%arg0, %arg1] : memref<2x2xf32>
 	}
 	affine.for %tmp = 0 to 1 {
 		%arg0 = arith.constant 0 : index
 		%arg1 = arith.constant 1 : index
 		%s = arith.constant 2.0 : f32
-		memref.store %s, %v0[%zero, %zero] : memref<2x2xf32>
+		memref.store %s, %v0[%arg0, %arg1] : memref<2x2xf32>
 	}
 	affine.for %tmp = 0 to 1 {
 		%arg0 = arith.constant 1 : index
 		%arg1 = arith.constant 0 : index
 		%s = arith.constant 3.0 : f32
-		memref.store %s, %v0[%zero, %zero] : memref<2x2xf32>
+		memref.store %s, %v0[%arg0, %arg1] : memref<2x2xf32>
 	}
 	affine.for %tmp = 0 to 1 {
 		%arg0 = arith.constant 1 : index
 		%arg1 = arith.constant 1 : index
 		%s = arith.constant 4.0 : f32
-		memref.store %s, %v0[%zero, %zero] : memref<2x2xf32>
+		memref.store %s, %v0[%arg0, %arg1] : memref<2x2xf32>
 	}
 
 	return

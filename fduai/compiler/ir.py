@@ -183,7 +183,7 @@ class Instruction():
             ret += f'%s = arith.constant {float(data)} : f32\n'
 
             ret += '\t' * indent
-            ret += f'memref.store %s, {var}{self._mlir_index(shape, idx)} : memref{self._mlir_shape(shape)}\n'
+            ret += f'memref.store %s, {var}{self._mlir_index(shape, shape)} : memref{self._mlir_shape(shape)}\n'
 
             indent -= 1
             ret += '\t' * indent
