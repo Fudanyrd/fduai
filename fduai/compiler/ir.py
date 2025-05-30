@@ -63,7 +63,7 @@ class Compiler:
             self.ret = ret
         else:
             self.instructions.append(('return', None, []))
-            self.ret = None
+            self.ret = []
 
     def add_globl_var(self, name: str):
         if name not in self.shapes:
@@ -512,17 +512,17 @@ class Instruction():
             # 
             # add
             #
-            for i in range(len(out_shape)):
+            for i in range(len(in_shape)):
                 ret += '\t' * indent
-                ret += f'affine.for %arg{i} = 0 to {out_shape[i]}' + ' {\n'
+                ret += f'affine.for %arg{i} = 0 to {in_shape[i]}' + ' {\n'
                 indent += 1
 
             # %s0 = memref.load %output[%arg0, ..., %argn] : memref<...>
             ret += '\t' * indent
-            ret += f'%s0 = memref.load {out_var}{self._mlir_index(out_shape, out_shape)} : {Mlir.typename(out_shape)}\n'
+            ret += f'%s0 = memref.load {out_var}{self._mlir_index(in_shape, out_shape)} : {Mlir.typename(out_shape)}\n'
             # %s1 = memref.load %input[%arg0, ..., %argn] : memref<...>
             ret += '\t' * indent
-            ret += f'%s1 = memref.load {in_var}{self._mlir_index(out_shape, in_shape)} : {Mlir.typename(in_shape)}\n'
+            ret += f'%s1 = memref.load {in_var}{self._mlir_index(in_shape, in_shape)} : {Mlir.typename(in_shape)}\n'
 
             # %s2 = arith.addf %s0, %s1 : f32
             ret += '\t' * indent
@@ -532,7 +532,7 @@ class Instruction():
             ret += f'memref.store %s2, {out_var}{self._mlir_index(out_shape, out_shape)}'
             ret += f" : {Mlir.typename(out_shape)}\n"
 
-            for i in range(len(out_shape)):
+            for i in range(len(in_shape)):
                 indent -= 1
                 ret += '\t' * indent
                 ret += '}\n'
