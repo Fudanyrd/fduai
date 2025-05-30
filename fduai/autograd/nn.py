@@ -23,8 +23,8 @@ class linear(nn):
     def __init__(self, in_features: int, out_features: int):
         super().__init__()
 
-        self.w = DataNode.tensor([in_features, out_features])
-        self.b = DataNode.tensor([1, out_features])
+        self.w = DataNode.node([in_features, out_features])
+        self.b = DataNode.node([1, out_features])
         self.params = [self.w, self.b]
 
     def parameters(self) -> list[DataNode]:
@@ -48,7 +48,7 @@ def compile_nn(nn: nn, input_dims) -> Compiler:
         compiler = CompilerContext.compiler
         inputs = []
         for dim in input_dims:
-            inputs.append(DataNode.tensor(dim))
+            inputs.append(DataNode.node(dim))
         
         for param in nn.parameters():
             compiler.add_globl_var(param.tensor.name)
@@ -72,13 +72,13 @@ def compile_backward(nn: nn, loss_fn, y_shape, input_dims) -> Compiler:
 
         inputs = []
         for dim in input_dims:
-            inputs.append(DataNode.tensor(dim))
+            inputs.append(DataNode.node(dim))
 
         for param in nn.parameters():
             compiler.add_globl_var(param.tensor.name)
             compiler.allocated.add(param.tensor.name)
 
-        y = DataNode.tensor(y_shape)
+        y = DataNode.node(y_shape)
         compiler.add_arg(y.tensor.name)
         compiler.allocated.add(y.tensor.name)
 
