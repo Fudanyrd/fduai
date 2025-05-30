@@ -14,7 +14,7 @@ class DataNode():
         DataNode.topological_order.append(self)
 
     @staticmethod
-    def tensor(shape: list[int], requires_grad: bool = True, device=Device.CPU):
+    def node(shape: list[int], requires_grad: bool = True, device=Device.CPU):
         t = Variable(shape) if CompilerContext.compiling else Tensor.zeros(shape, device)
         return DataNode(t, requires_grad)
 
