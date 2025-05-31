@@ -51,6 +51,7 @@ convert_to_llvm_pass = PassPipeline(
     '--reconcile-unrealized-casts',
 )
 
+# accelerate the affine dialect
 affine_accelerate_pass = PassPipeline(
     '--affine-simplify-structures',
     '--affine-loop-fusion',

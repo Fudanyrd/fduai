@@ -5,6 +5,8 @@ import os
 def _cc_compiler() -> str:
     if 'CC' in os.environ:
         return os.environ['CC']
+    elif 'CCLD' in os.environ:
+        return os.environ['CCLD']
     else:
         gcc = subprocess.check_output(['which', 'gcc']).decode('utf-8').strip()
         if  gcc:
@@ -35,7 +37,7 @@ def _cpu_runner_exe() -> str:
 
 class CPURunner():
     """
-    Compile the input mlir and link it to an executable. If 
+    Compile the input mlir to an object file and link it to an executable. If 
     object file and executable are not specified, they will be
     removed after the execution.
 
@@ -51,6 +53,17 @@ class CPURunner():
     def __init__(self, ir: str, 
                  extra_compile_args: list = ['--O0'],
                  extra_link_args: list = ["-lc", '-lm']):
+        """
+        :param ir: mlir ir
+        :para m extra_compile_args: extra arguments to mlir-cpu-runner.
+        :param extra_link_args: extra arguments to cc as linker.
+
+        Example to specify object file path(a.o):
+        >>> CPURunner(extra_compile_args=['--object-filename', 'a.o'])
+
+        Example to specify executable file path(a.out):
+        >>> CPURunner(extra_link_args=['-o', 'a.out'])
+        """
         self.ir = ir
         self.rm_obj = False
 
@@ -70,7 +83,7 @@ class CPURunner():
         if res.returncode != 0:
             print(f"=== compile args are: {compile_args}", file=sys.stderr)
             print('=== mlir-cpu-runner output:', file=sys.stderr)
-            print(res.stdout.decode(), file=sys.stderr)
+            print(res.stderr.decode(), file=sys.stderr)
             raise RuntimeError("Failed to compile input IR")
         
         # create executable
