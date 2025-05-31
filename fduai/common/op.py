@@ -21,6 +21,8 @@ class Operator(Enum):
     RETURN = 'return'
     INIT = 'init'
     FILL = 'fill'
+    FOR = 'for'
+    END_FOR = 'end_for'
 
 
     @staticmethod
@@ -43,6 +45,8 @@ class Operator(Enum):
             "return": Operator.RETURN,
             "init": Operator.INIT,
             "fill": Operator.FILL,
+            "for": Operator.FOR,
+            'end_for': Operator.END_FOR,
         }
 
         return d[value]

@@ -214,6 +214,15 @@ class Instruction():
                 buf = []
             self._mlir_init(buf, self.output, self.inputs[0], idx=[], indent=indent)
             return ''.join(buf)
+
+        if self.op == Operator.FOR:
+            ret = '\t' * indent
+            ret += f'affine.for %tmp = {self.inputs[0]} to {self.output}' + ' {\n'
+            return ret
+        if self.op == Operator.END_FOR:
+            ret = '\t' * indent
+            ret += '}\n'
+            return ret
         
         if self.op == Operator.FILL:
             data: float = float(self.inputs[0])
