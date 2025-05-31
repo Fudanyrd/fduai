@@ -108,7 +108,7 @@ module {
 				memref.store %s_zero, %v13[%zero, %zero] : memref<1x1xf32>
 			}
 		}
-		affine.for %arg0 = 0 to 1 {
+		affine.for %arg0 = 0 to 16 {
 			affine.for %arg1 = 0 to 1 {
 				%s0 = memref.load %v13[%zero, %zero] : memref<1x1xf32>
 				%s1 = memref.load %v11[%arg0, %zero] : memref<16x1xf32>
@@ -213,7 +213,7 @@ module {
 				memref.store %s_zero, %v22[%zero, %zero] : memref<1x1xf32>
 			}
 		}
-		affine.for %arg0 = 0 to 1 {
+		affine.for %arg0 = 0 to 16 {
 			affine.for %arg1 = 0 to 1 {
 				%s0 = memref.load %v22[%zero, %zero] : memref<1x1xf32>
 				%s1 = memref.load %v18[%arg0, %zero] : memref<16x1xf32>
