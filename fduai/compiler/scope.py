@@ -97,6 +97,31 @@ class Function(Scope):
         super().__exit__(*args)
         self.compiler.__exit__(*args)
 
+class Repeat():
+    """
+    Execute the same code for a number of times.
+
+    Example:
+    >>> with Function('main') as f:
+    >>>     with Repeat(10):
+    >>>         _ = Variable.zeros([1024, 1024])
+    >>> print(compile_function(f))
+    """
+    def __init__(self, times: int):
+        self.times = times
+        if not ScopeContext.stack:
+            raise ValueError("Repeat must be used inside a function")
+        self.func: Function = ScopeContext.stack[-1]
+        if not isinstance(self.func, Function):
+            raise ValueError("Repeat must be used inside a function")
+
+    def __enter__(self):
+        self.func.compiler.instructions.append(('for', self.times, [0]))
+        return self
+
+    def __exit__(self, *args):
+        self.func.compiler.instructions.append(('end_for', 0, [0]))
+
 def compile_function(func: Function, indent: int = 1):
     """
     Compile a function to mlir.
@@ -146,9 +171,16 @@ def compile_function(func: Function, indent: int = 1):
     for insn in compiler.instructions:
         op, output, inputs = insn
         op = Operator.load_from_value(op)
+
+        if op == Operator.END_FOR:
+            indent -= 1
+
         ins = Instruction(op, output, inputs, compiler)
         ir += ins.generate_mlir(indent=indent + 1)
         ir += '\n'
+
+        if op == Operator.FOR:
+            indent += 1
 
     if func.ret:
         insn = Instruction(Operator.RETURN, func.ret[0].name, [], func.compiler)
@@ -157,9 +189,9 @@ def compile_function(func: Function, indent: int = 1):
     else:
         if func.name == "main":
             ir += '\t' * indent
-            ir += '%main_ret = arith.constant 0 : i32\n'
+            ir += '\t%main_ret = arith.constant 0 : i32\n'
             ir += '\t' * indent
-            ir += "return %main_ret : i32\n"
+            ir += "\treturn %main_ret : i32\n"
         else:
             ir += '\t' * indent + '\treturn\n'
 

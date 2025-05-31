@@ -1,7 +1,7 @@
 from .ir import Variable, Instruction, DType
 from .ir import Compiler, CompilerContext
 from .ir import Instruction
-from .scope import Function, Module, compile_function, compile_module
+from .scope import Function, Module, Repeat, compile_function, compile_module
 from fduai.common import Operator
 from fduai.common import Mlir
 
