@@ -9,3 +9,7 @@ tmp
 build
 __pycache__
 
+*.mlir 
+*.ll
+*.o
+*.a

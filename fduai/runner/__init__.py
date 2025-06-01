@@ -23,4 +23,19 @@ Example:
 >>> code = auto_dealloc_pass(code)
 >>> code = convert_to_llvm_pass(code)
 >>> runner = CPURunner(code, extra_link_args=['-o', 'add.out'])
+
+Example of printing a tensor in JSON format:
+>>> from fduai.compiler import *
+>>> from fduai.runner.pipeline import *
+>>> from fduai.runner.cpu import CPURunner
+>>> with Module() as m:
+>>>     with Function('main') as f:
+>>>         a = Variable.ones([2, 2, 2])
+>>>         _ = a.__repr__()
+>>> ir = compile_module(m)
+>>> ir = convert_to_llvm_pass(ir)
+>>> runner = CPURunner(ir, extra_link_args=['-o', 'p.out'])
+
+Then execute `p.out` via shell, which should print:
+>>> [[[1.000000,1.000000],[1.000000,1.000000]],[[1.000000,1.000000],[1.000000,1.000000]]]
 """
