@@ -2,55 +2,7 @@ import subprocess
 import sys
 import os
 
-_printer = """
-#include <stddef.h>
-#include <stdio.h>
-
-void json_list_start() {
-    printf("[");
-}
-
-void json_list_end() {
-    printf("]");
-}
-
-void json_list_sep() {
-    printf(",");
-}
-
-void json_f32(float value) {
-    printf("%f", value);
-}
-
-void json_list_data(const float *buf, size_t len) {
-    json_list_start();
-
-    json_f32(buf[0]);
-    for (size_t i = 1; i < len; i++) {
-        json_list_sep();
-        json_f32(buf[i]);
-    }
-
-    json_list_end();
-}
-
-void new_line() {
-    printf("\\n");
-    fflush(stdout);
-}
-"""
-
-def _cc_compiler() -> str:
-    if 'CC' in os.environ:
-        return os.environ['CC']
-    elif 'CCLD' in os.environ:
-        return os.environ['CCLD']
-    else:
-        gcc = subprocess.check_output(['which', 'gcc']).decode('utf-8').strip()
-        if  gcc:
-            return gcc
-        else:
-            return 'cc'
+from fduai.common.lib import Library, libprinter, libfence, cc
 
 def _mktemp(dir = None) -> str:
     args = ['mktemp'] if dir is None else ['mktemp', '-p', dir]
@@ -63,43 +15,6 @@ def _mktemp(dir = None) -> str:
         raise RuntimeError(res.stderr.decode('utf-8'))
 
     return res.stdout.decode('utf-8').strip()
-
-def _printer_lib():
-    src = _mktemp()
-
-    with open(src, 'w') as fobj:
-        fobj.write(_printer)
-
-    obj = _mktemp()
-    lib = _mktemp()
-
-    # compile
-    res = subprocess.run(
-        [_cc_compiler()] + ['-fpic', '-c', '-O2', '-g', '-x', 'c', src, '-o', obj],
-        capture_output=True)
-    if res.returncode != 0:
-        raise RuntimeError(res.stderr.decode('utf-8'))
-
-    # link shared library
-    res = subprocess.run(
-        ['/usr/bin/env', 'ld', obj, '-shared', '-o', lib, '-lc', '-lm'],
-        capture_output=True)
-    if res.returncode != 0:
-        raise RuntimeError(res.stderr.decode('utf-8'))
-
-    # os.unlink(src)
-    os.unlink(obj)
-
-    static_lib = _mktemp()
-    # compile static lib
-    res = subprocess.run(
-        [_cc_compiler()] + ['-c', '-O2', '-g', '-x', 'c', src, '-o', static_lib],
-        capture_output=True)
-    if res.returncode != 0:
-        raise RuntimeError(res.stderr.decode('utf-8'))
-
-    os.unlink(src)
-    return lib, static_lib
 
 def _cpu_runner_exe() -> str:
     if 'MLIR_CPU_RUNNER' in os.environ:
@@ -143,12 +58,15 @@ class CPURunner():
         self.ir = ir
         self.rm_obj = False
         self.rm_exe = False
-        self._libprinter, \
-        self._libprinter_static = _printer_lib()
+        self.libprinter = libprinter
+        self.libfence = libfence
+
+        self.shared_libs = [self.libprinter.shared_lib, self.libfence.shared_lib]
+        self.static_libs = [self.libprinter.static_lib, self.libfence.static_lib]
 
         # create object file
         compile_args = ['--entry-point-result=i32', '--dump-object-file'] + extra_compile_args
-        compile_args.append('--shared-libs=' + self._libprinter)
+        compile_args.append('--shared-libs=' + ','.join(self.shared_libs))
         if '--object-filename' in extra_compile_args:
             self.obj = extra_compile_args[extra_compile_args.index('--object-filename') + 1]
         else:
@@ -167,10 +85,12 @@ class CPURunner():
             raise RuntimeError("Failed to compile input IR")
         
         # create executable
-        cc = _cc_compiler()
+        cc_exe = cc()
         link_args = extra_link_args
         link_args.append(self.obj)
-        link_args.append(self._libprinter_static) # link libprinter static lib
+
+        for static_lib in self.static_libs:
+            link_args.append(static_lib)
         if '-o' in extra_link_args:
             self.exe =  extra_link_args[extra_link_args.index('-o') + 1]
         else:
@@ -178,7 +98,7 @@ class CPURunner():
             self.exe = _mktemp()
             link_args.append('-o')
             link_args.append(self.exe)
-        res = subprocess.run([cc] + link_args, capture_output=True)
+        res = subprocess.run([cc_exe] + link_args, capture_output=True)
         if res.returncode != 0:
             raise RuntimeError(res.stderr.decode())
 
@@ -187,7 +107,3 @@ class CPURunner():
             os.unlink(self.obj)
         if self.rm_exe:
             os.unlink(self.exe)
-
-        # remove libprinter
-        os.unlink(self._libprinter)
-        os.unlink(self._libprinter_static)

@@ -5,6 +5,8 @@ For executing mlir code.
 
 Environment Variables:
     CC: C compiler to use
+    LD: linker to use
+    AR: archiver to use
     MLIR_OPT: mlir-opt executable to use
     MLIR_CPU_RUNNER: mlir-cpu-runner executable to use
 

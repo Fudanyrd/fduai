@@ -26,6 +26,8 @@ class Module(Scope):
         "llvm.func @json_list_sep()",
         "llvm.func @json_f32(f32)",
         "llvm.func @new_line()",
+        # provided by fduai.compiler.fence
+        "llvm.func @m_fence(f32)",
     ]
 
     """
