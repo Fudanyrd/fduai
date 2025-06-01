@@ -18,6 +18,15 @@ class Scope():
         ScopeContext.stack.pop()
 
 class Module(Scope):
+    extern_functions = [
+        # provided by fduai.compiler.print_tensor.c
+        "llvm.func @json_list_start()",
+        "llvm.func @json_list_end()",
+        "llvm.func @json_list_sep()",
+        "llvm.func @json_f32(f32)",
+        "llvm.func @new_line()",
+    ]
+
     """
     
     Example:
@@ -223,6 +232,11 @@ def compile_module(module: Module, indent: int = 0) -> str:
     if module.name:
         ir += ' @' + module.name
     ir += " {\n"
+
+    for fn in Module.extern_functions:
+        ir += '\t' * (indent + 1)
+        ir += fn
+        ir += '\n'
 
     for child in module.children:
         ir += compile_function(child, indent=indent + 1)

@@ -26,6 +26,13 @@ class Compiler:
         self.prev = False
         self.prev_compiler = None
 
+        self.n_const = 0
+
+    def next_constant(self) -> int:
+        ret = self.n_const 
+        self.n_const += 1
+        return ret
+
     def __enter__(self):
 
         self.prev = CompilerContext.compiling
@@ -193,6 +200,9 @@ class Instruction():
 
         for i in range(len(data)):
             self._mlir_init(ir, var, data[i], idx + [i], indent)
+
+    def _mlir_next_const(self):
+        return '%const' + str(self.compiler.next_constant())
 
     def generate_mlir(self, indent: int = 2) -> str:
         if self.compiler is None:
@@ -551,6 +561,90 @@ class Instruction():
             # return %ret : memref<2x2xf32>
             var = self.compiler.ret
             ret += f"return {Mlir.retstmt(var, self.compiler.retshape())}\n"
+        elif self.op == Operator.PRINT:
+            one = self._mlir_next_const()
+            ret += '\t' * indent
+            ret += f'{one} = arith.constant 1 : index\n'
+
+            indices = []
+            for i in range(len(output_shape)):
+                # create a constant for each dimension
+                ret += '\t' * indent
+                constant = self._mlir_next_const()
+                ret +=  f'{constant} = arith.constant {output_shape[i]} : index\n'
+                indices.append(constant)
+
+            # llvm.call @json_list_start() : () -> ()
+            ret += '\t' * indent
+            ret += f'llvm.call @json_list_start() : () -> ()' + '\n'
+
+            for i in range(len(output_shape) - 1):
+                ret += '\t' * indent
+                # use scf.for instead of affine.for
+                ret += f'scf.for %arg{i} = %zero to {indices[i]} step {one}' + ' {\n'
+                indent += 1
+
+                cond = self._mlir_next_const()
+                ret += '\t' * indent
+                ret += f"{cond} = arith.cmpi ne, %zero, %arg{i} : index\n"
+
+                # if %cond { json_list_sep(); }
+                ret += '\t' * indent
+                ret += f'scf.if {cond} ' + " {\n"
+                indent += 1
+                ret += '\t' * indent
+                ret += f'llvm.call @json_list_sep() : () -> ()' + '\n'
+                indent -= 1
+                ret += '}\n'
+
+                # llvm.call @json_list_start() : () -> ()
+                ret += '\t' * indent
+                ret += f'llvm.call @json_list_start() : () -> ()' + '\n'
+
+            i = len(output_shape) - 1
+
+            # scf.for %argi = %zero to %one step %one { json_f32();}
+            ret += '\t' * indent
+            ret += f'scf.for %arg{i} = %zero to {one} step {one}' + ' {\n'
+            indent += 1
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {self.output}{self._mlir_index(output_shape, output_shape)} : {Mlir.typename(output_shape)}\n'
+            ret += '\t' * indent
+            ret +=  f'llvm.call @json_f32(%s0) : (f32) -> ()' + '\n'
+            indent -= 1
+            ret += '\t' * indent
+            ret += "}\n"
+
+            # scf.for %argi = %zero to %one step %one { json_list_sep(); json_f32();}
+            ret += '\t' * indent
+            ret += f'scf.for %arg{i} = {one} to {indices[i]} step {one}' + ' {\n'
+            indent += 1
+            ret += '\t' * indent
+            ret += 'llvm.call @json_list_sep() : () -> ()\n'
+            ret += '\t' * indent
+            ret += f'%s0 = memref.load {self.output}{self._mlir_index(output_shape, output_shape)} : {Mlir.typename(output_shape)}\n'
+            ret += '\t' * indent
+            ret +=  f'llvm.call @json_f32(%s0) : (f32) -> ()\n'
+            indent -= 1
+            ret += '\t' * indent
+            ret += "}\n"
+
+            for i in range(len(output_shape) - 1):
+                # llvm.call @json_list_end() : () -> ()
+                ret += '\t' * indent
+                ret += f'llvm.call @json_list_end() : () -> ()' + '\n'
+
+                indent -= 1
+                ret += '\t' * indent
+                ret += '}\n'
+
+            # llvm.call @json_list_end() : () -> ()
+            ret += '\t' * indent
+            ret +=  "llvm.call @json_list_end() : () -> ()\n"
+
+            # llvm.call @new_line() : () -> ()
+            ret += '\t' * indent
+            ret += 'llvm.call @new_line() : () -> ()' + '\n'
         else:
             raise NotImplementedError(f'Instruction {self.op.value} not implemented')
 
@@ -623,15 +717,20 @@ class Variable():
             compiler.add_insn(Operator.INIT, ret.name, data)
         return ret
 
-    def __str__(self):
-        return self.name
-
     def __repr__(self):
+        if CompilerContext.compiler:
+            CompilerContext.compiler.add_insn(Operator.PRINT, self.name)
+            # does not print anything
+            return ''
+
         d = {
             "shape":  self.shape,
             "dtype":  self.dtype.value}
 
         return json.dumps(d)
+
+    def __str__(self):
+        return self.name
 
     def __add__(self, other):
         assert isinstance(other, Variable), f'Incompatible types: {type(self)} and {type(other)}'

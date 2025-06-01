@@ -1,3 +1,22 @@
+"""
+fduai.op
+===========
+We use a simple IR for this project. Our IR supports the following instructions:
+
+**ADD**: Add two tensors.
+**SUB**: Subtract two tensors.
+**MUL**: Multiply two tensors.
+**DIV**: Divide two tensors.
+**NEG**: Negate a tensor.
+**MATMUL**: Matrix multiplication.
+**TRANSPOSE**: Transpose a tensor.
+**EQ**: Equal.
+**NE**: Not equal.
+**LT**: Less than.
+**GT**: Greater than.
+**RELU**: ReLU activation function.
+**PRINT**: Print a tensor in JSON format.
+"""
 from enum import Enum
 
 class Operator(Enum):
@@ -23,6 +42,7 @@ class Operator(Enum):
     FILL = 'fill'
     FOR = 'for'
     END_FOR = 'end_for'
+    PRINT = 'print'
 
 
     @staticmethod
@@ -47,6 +67,7 @@ class Operator(Enum):
             "fill": Operator.FILL,
             "for": Operator.FOR,
             'end_for': Operator.END_FOR,
+            'print': Operator.PRINT,
         }
 
         return d[value]
