@@ -16,6 +16,7 @@ We use a simple IR for this project. Our IR supports the following instructions:
 **GT**: Greater than.
 **RELU**: ReLU activation function.
 **PRINT**: Print a tensor in JSON format.
+**MOV**: Move a tensor.
 """
 from enum import Enum
 
@@ -43,6 +44,7 @@ class Operator(Enum):
     FOR = 'for'
     END_FOR = 'end_for'
     PRINT = 'print'
+    MOV = 'move'
 
 
     @staticmethod
@@ -68,6 +70,7 @@ class Operator(Enum):
             "for": Operator.FOR,
             'end_for': Operator.END_FOR,
             'print': Operator.PRINT,
+            'move': Operator.MOV,
         }
 
         return d[value]

@@ -1,4 +1,5 @@
 from .ir import Compiler, Variable, Instruction
+from .ir import CompilerContext
 from fduai.common import Mlir, Operator
 
 class ScopeContext:
@@ -245,3 +246,16 @@ def compile_module(module: Module, indent: int = 0) -> str:
     ir += '}\n'
 
     return ir
+
+def move(src: Variable, dst: Variable):
+    """
+    Insert a move instruction to move src to dst.
+    """
+    compiler = CompilerContext.compiler
+    if not compiler:
+        raise Exception('move() can only be called inside a function')
+
+    if src.shape != dst.shape:
+        raise ValueError('move() can only be called on variables with the same shape')
+
+    compiler.add_insn(Operator.MOV, dst.name, src.name)

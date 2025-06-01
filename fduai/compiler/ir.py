@@ -233,6 +233,24 @@ class Instruction():
             ret = '\t' * indent
             ret += '}\n'
             return ret
+
+        if self.op == Operator.MOV:
+            src = self.inputs[0]
+            src_shape = self.compiler.shapes[self.inputs[0]]
+            tgt = self.output
+            tgt_shape = self.compiler.shapes[self.output]
+
+            ret = ''
+            if tgt in self.compiler.allocated:
+                # free this buffer
+                ret += '\t' * indent
+                ret += f'memref.dealloc {tgt} : memref{self._mlir_shape(tgt_shape)}\n'
+
+            ret += '\t' * indent
+            ret += f'memref.copy {src}, {tgt} : memref{self._mlir_shape(src_shape)} to memref{self._mlir_shape(tgt_shape)}\n'
+
+            return ret
+
         
         if self.op == Operator.FILL:
             data: float = float(self.inputs[0])
@@ -730,6 +748,10 @@ class Variable():
         return json.dumps(d)
 
     def __str__(self):
+        if CompilerContext.compiler:
+            CompilerContext.compiler.add_insn(Operator.PRINT, self.name)
+            # does not print anything
+            return ''
         return self.name
 
     def __add__(self, other):
