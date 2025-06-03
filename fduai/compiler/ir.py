@@ -616,6 +616,7 @@ class Instruction():
                 ret += '\t' * indent
                 ret += f'llvm.call @json_list_sep() : () -> ()' + '\n'
                 indent -= 1
+                ret += '\t' * indent
                 ret += '}\n'
 
                 # llvm.call @json_list_start() : () -> ()
