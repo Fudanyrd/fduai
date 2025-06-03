@@ -208,6 +208,9 @@ class Instruction():
         if self.compiler is None:
             raise ValueError('Compiler not set')
 
+        if self.op == Operator.ASM:
+            return '\t' * indent + self.output + '\n'
+
         if self.op == Operator.RETURN and self.compiler.ret is None:
             return ('\t' * indent) + "return\n"
 

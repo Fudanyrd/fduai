@@ -45,6 +45,7 @@ class Operator(Enum):
     END_FOR = 'end_for'
     PRINT = 'print'
     MOV = 'move'
+    ASM = 'asm'
 
 
     @staticmethod
@@ -71,6 +72,7 @@ class Operator(Enum):
             'end_for': Operator.END_FOR,
             'print': Operator.PRINT,
             'move': Operator.MOV,
+            'asm': Operator.ASM,
         }
 
         return d[value]
