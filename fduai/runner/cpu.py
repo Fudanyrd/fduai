@@ -2,7 +2,7 @@ import subprocess
 import sys
 import os
 
-from fduai.common.lib import Library, libprinter, libfence, cc
+from fduai.common.lib import Library, libprinter, libfence, libtimer, cc, cxx
 
 def _mktemp(dir = None) -> str:
     args = ['mktemp'] if dir is None else ['mktemp', '-p', dir]
@@ -60,9 +60,10 @@ class CPURunner():
         self.rm_exe = False
         self.libprinter = libprinter
         self.libfence = libfence
+        self.libtimer = libtimer
 
-        self.shared_libs = [self.libprinter.shared_lib, self.libfence.shared_lib]
-        self.static_libs = [self.libprinter.static_lib, self.libfence.static_lib]
+        self.shared_libs = [self.libprinter.shared_lib, self.libfence.shared_lib, libtimer.shared_lib]
+        self.static_libs = [self.libprinter.static_lib, self.libfence.static_lib, libtimer.static_lib]
 
         # create object file
         compile_args = ['--entry-point-result=i32', '--dump-object-file'] + extra_compile_args
@@ -85,7 +86,7 @@ class CPURunner():
             raise RuntimeError("Failed to compile input IR")
         
         # create executable
-        cc_exe = cc()
+        cc_exe = cxx()
         link_args = extra_link_args
         link_args.append(self.obj)
 

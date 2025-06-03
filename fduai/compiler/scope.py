@@ -28,6 +28,9 @@ class Module(Scope):
         "llvm.func @new_line()",
         # provided by fduai.compiler.fence
         "llvm.func @m_fence(f32)",
+        # provided by fduai.compiler.timer
+        "llvm.func @timer_start()",
+        "llvm.func @timer_stop()",
     ]
 
     """
@@ -133,6 +136,34 @@ class Repeat():
 
     def __exit__(self, *args):
         self.func.compiler.instructions.append(('end_for', 0, [0]))
+
+class Timer():
+    """
+    Insert call to @timer_start and @timer_stop to measure execution time.
+
+    Example of timing matrix multiplication:
+    >>> with Module() as m:
+    >>>     with Function('main'):
+    >>>         a = Variable.ones([2, 128])
+    >>>         b = Variable.fill([128, 2], 2.0)
+    >>>         with Timer():
+    >>>             with Repeat(1000):
+    >>>                 r = Variable.matmul(a, b)
+    """
+    def __init__(self):
+        if not ScopeContext.stack:
+            raise ValueError("Timer must be used inside a function")
+        self.func = ScopeContext.stack[-1]
+        if not isinstance(self.func, Function):
+            raise ValueError("Timer must be used inside a function")
+    def __enter__(self):
+        asm = 'llvm.call @timer_start() : () -> ()'
+        self.func.compiler.instructions.append(('asm', asm, []))
+        return self 
+
+    def __exit__(self, *args):
+        asm = 'llvm.call @timer_stop() : () -> ()'
+        self.func.compiler.instructions.append(('asm', asm, []))
 
 def compile_function(func: Function, indent: int = 1):
     """
