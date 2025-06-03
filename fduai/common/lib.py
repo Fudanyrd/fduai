@@ -8,6 +8,11 @@ import os
 import sys
 import subprocess
 import tempfile
+from enum import Enum
+
+class Lang(Enum):
+    C = 'c'
+    CPP = 'c++'
 
 def mktemp(dir = None) -> str:
     args = ['mktemp'] if dir is None else ['mktemp', '-p', dir]
@@ -33,7 +38,16 @@ def cc():
         else:
             return 'cc'
 
-def ld():
+def cxx():
+    if 'CXX' in os.environ:
+        return os.environ['CXX']
+    else:
+        return 'c++'
+
+def ld(lang: Lang = Lang.C):
+    if lang == Lang.CPP:
+        return cxx()
+
     if 'LD' in os.environ:
         return os.environ['LD']
     else:
@@ -46,14 +60,15 @@ def ar():
         return 'ar'
 
 class Library():
-    def __init__(self, src: str):
+    def __init__(self, src: str, lang=Lang.C):
         self.opt = '-O2'
+        self.lang = lang
         self.debug = None
         self.link_libs = ['-lc', '-lm']
         self.src = src
 
-        self.cc_exe = cc()
-        self.ld_exe = ld()
+        self.cc_exe = cc() if self.lang == Lang.CPP else cxx()
+        self.ld_exe = ld(self.lang)
         self.ar_exe = ar()
 
         self.c_source = mktemp()
@@ -68,7 +83,7 @@ class Library():
 
     def _build_static_lib(self):
         object_file = mktemp()
-        args = [self.cc_exe, '-c', self.opt, '-x', 'c', self.c_source, '-o', object_file]
+        args = [self.cc_exe, '-c', self.opt, '-x', self.lang.value, self.c_source, '-o', object_file]
         if self.debug:
             args.append(self.debug)
 
@@ -95,7 +110,7 @@ class Library():
 
     def _build_shared_lib(self):
         object_file = mktemp()
-        args = [self.cc_exe, '-fPIC', '-c', self.opt, '-x', 'c', self.c_source, '-o', object_file]
+        args = [self.cc_exe, '-fPIC', '-c', self.opt, '-x', self.lang.value, self.c_source, '-o', object_file]
         if self.debug:
             args.append(self.debug)
 
@@ -173,3 +188,48 @@ void m_fence(const float value __attribute__((unused))) {
     asm volatile("" : : : "memory");
 }
 """)
+
+libtimer = Library("""
+#include <iostream>
+#include <chrono>
+
+typedef std::chrono::high_resolution_clock Clock;
+
+static std::chrono::_V2::system_clock::time_point timers[16];
+static int n_timers = 0;
+
+extern "C" void timer_start(void) {
+    if (n_timers >= 16) {
+        std::cerr << "Maximum number of timers reached." << std::endl;
+        return;
+    }
+    auto timer = Clock::now();
+    timers[n_timers++] = timer;
+}
+
+extern "C" void timer_stop(void) {
+    auto timer = Clock::now();
+    if (n_timers <= 0) {
+        std::cerr << "No timers to stop." << std::endl;
+        return;
+    }
+    auto duration = (timer - timers[n_timers - 1]);
+    std::cerr << "[Timer " << n_timers - 1 << "] ";
+    std::cerr << duration.count() << std::endl;
+}
+""", lang=Lang.CPP)
+
+def _copy_libs(dir: str):
+    libs = {
+        "libprinter": libprinter,
+        "libfence": libfence,
+        "libtimer": libtimer,
+    }
+
+    for lib in libs:
+        libobj = libs[lib]
+        # copy staic and shared lib to dir.
+        subprocess.run(['cp', libobj.shared_lib, os.path.join(dir, lib + '.so')])
+        subprocess.run(['cp', libobj.static_lib, os.path.join(dir, lib + '.a')])
+        # extract object files
+        subprocess.run([ar(), 'x', os.path.join(dir, lib + '.a'), f'--output={dir}'])
