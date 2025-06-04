@@ -400,36 +400,19 @@ for _ in range(100):
 
 # Recording Operations for Compilation
 
-## Context Manager Design
+## Translate Python Code into Our Internal IR
 
 ```python
-with Compiler() as c:
-    # Operations are recorded, not executed
-    lin = linear(10, 10)
-    y = lin.forward(x)
-    
-# Now c contains:
-# - Instructions: [('@', '%v3', ('%v2', '%v0')), 
-#                  ('+', '%v4', ('%v3', '%v1'))]
-# - Shapes: {'%v0': [10,10], '%v1': [1,10], 
-#            '%v2': [16,10], '%v3': [16,10]}
+from fduai.compiler import *
+with Compiler() as compiler:
+    a = Variable.zeros([2,2])
+    b = Variable.ones([1,2])
+    c = a + b
+
+# ('fill', '%v0', (0.0,))
+# ('fill', '%v1', (1.0,))
+# ('+', '%v2', ('%v0', '%v1'))
 ```
-
----
-
-## Key Components
-
-**Variable Tracking**
-```python
-class Variable:
-    def __init__(self, shape):
-        self.name = f'%v{Variable.count}'
-        self.shape = shape
-        CompilerContext.compiler.shapes[self.name] = shape
-```
-
-**Shape Inference** - Computed at compile time
-**Memory Planning** - Static allocation strategy
 
 ---
 
@@ -465,11 +448,42 @@ func.func @forward(%v0: memref<10x10xf32>,    // weights
 
 ## Compilation Results: Dramatic Performance Gains
 
+`fduai` implementation:
+
+```py
+with Module() as m:
+    with Function('main') as f:
+        lr = Variable.fill([1,], 0.0001)
+        w = DataNode.ones([1, 1])
+        b = DataNode.zeros([1, 1])
+
+        with Repeat(128):
+            l = DataNode.matmul(x, w) + b - y
+            loss = l * l
+            loss.backward()
+
+            w_n = w.tensor - lr * w.grad
+            b_n = b.tensor - lr * b.grad
+            move(w_n, w.tensor)
+            move(b_n, b.tensor)
+
+            DataNode.zero_grad()
+
+        print(w.tensor)
+        print(b.tensor)
+```
+
+Mean execution time of training a linear regression model across 100 runs:
+
 | Implementation | Time (ms) | Speedup |
 |----------------|-----------|---------|
 | FDUAI Interpreted | 333.23 | 1× |
 | PyTorch | 13.69 | 24× |
 | **FDUAI Compiled** | **0.74** | **450×** |
+
+### Performance Gains
+- **450× speedup** over interpreted autograd
+- **18× faster** than PyTorch
 
 ---
 
@@ -517,33 +531,3 @@ func.func @forward(%v0: memref<10x10xf32>,    // weights
 - **Transpose**: Near-zero time (lazy evaluation)
 
 ---
-
-# Automatic Differentiation Overhead
-
-## Gradient Computation Performance
-
-| Case | FDUAI(CPU) | Torch(CPU) | Torch(CUDA) |
-|------|------------|------------|-------------|
-| matmul | 1.56 ms | 0.08 ms | 0.35 ms |
-| linear | 1518.60 ms | 12.59 ms | 1.44 ms |
-
-### Performance Gaps
-- **Matrix Multiplication**: 19× overhead vs PyTorch CPU
-- **Linear Layer**: 120× slower execution
-
----
-
-# Compilation Impact on Performance
-
-## Dramatic Speedup Through MLIR
-
-| Case | Time (ms) |
-|------|-----------|
-| FDUAI-MLIR | 0.74 |
-| FDUAI-Autograd | 333.23 |
-| PyTorch | 13.69 |
-
-### Performance Gains
-- **450× speedup** over interpreted autograd
-- **18× faster** than PyTorch
-
