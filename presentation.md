@@ -477,6 +477,7 @@ with Module() as m:
         print(w.tensor)
         print(b.tensor)
 ```
+---
 
 Mean execution time of training a linear regression model across 100 runs:
 
@@ -534,7 +535,7 @@ convert_to_llvm_pass = PassPipeline(
 ```
 ---
 
-# Basic Tensor Operations Performance
+## Basic Tensor Operations Performance
 
 ```py
 shape = [1000, 1000]
@@ -555,15 +556,19 @@ with Module() as m:
 | transpose     | 100 μs    | 17.6 μs  | 38.9 μs    | 202.0 μs           |
 | broadcast add | 100 μs    | 202 μs   | 15060 μs   | 211 μs             |
 
+---
+
 ## Compilation Time
 
 > Time required to translate fduai.ir into mlir(optimization level 2).
 
-| add | 147 ms | 
-| mul | 146 ms |
-| matmul | 141 ms |
-| transpose | 148 ms | 
-| broadcast add | 138 ms |
+| Operation      | Time To Execute |
+|---------------|------------------|
+| add           | 147 ms           |
+| mul           | 146 ms           |
+| matmul        | 141 ms           |
+| transpose     | 148 ms           |
+| broadcast add | 138 ms           |
 
 ---
 
