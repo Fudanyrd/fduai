@@ -507,27 +507,66 @@ Mean execution time of training a linear regression model across 100 runs:
 
 # Basic Tensor Operations Performance
 
+## Mlir Pass Pipeline
+
+
+```py
+# add necessary memory free operations
+auto_dealloc_pass = PassPipeline('--buffer-deallocation')
+
+# accelerate the affine dialect
+affine_accelerate_pass = PassPipeline(
+    '--affine-simplify-structures',
+    '--affine-loop-fusion',
+    '--affine-parallelize',
+    '--affine-loop-unroll',
+    '--affine-super-vectorize',
+)
+
+# convert dialects to llvm dialect
+convert_to_llvm_pass = PassPipeline(
+    '--lower-affine',
+    '--convert-scf-to-cf',
+    '--convert-to-llvm',
+    '--reconcile-unrealized-casts',
+)
+```
+
 ## Comparing Variable, NumPy, and PyTorch
 
-| Operation | Variable | NumPy | Torch(CPU) | Torch(CUDA) |
+```py
+shape = [1000, 1000]
+with Module() as m:
+    with Function('main'):
+        a = Variable.zeros(shape)
+        b = Variable.zeros(shape)
+        with Timer():
+            with Repeat(1000):
+                c = a + b
+```
+
+| Operation | Mlir(-O2) | NumPy | Torch(CPU) | tensor_module(CPU) |
 |-----------|----------|--------|------------|-------------|
-| add | 2 μs | 359 μs | 82 μs | 22 μs |
-| mul | 1 μs | 301 μs | 73 μs | 15 μs |
-| matmul | 1 μs | 5820 μs | 4805 μs | 590 μs |
-| transpose | 1 μs | 0 μs | 1 μs | 1 μs |
-| relu | 1 μs | 205 μs | 31 μs | 17 μs |
-| broadcast_add | 1 μs | 295 μs | 46 μs | 9 μs |
+| add | 260 μs | 301 μs | 15108 μs | 403 μs |
+| mul | 220 μs | 302 μs | 15107 μs | 401 μs |
+| matmul | 250 μs | 16180 μs | 24775 μs | 1023 μs |
+| transpose | 100 μs | 17.6 μs | 38.9 μs | 202.0 μs |
+
+## Compilation Time
+
+> Time required to translate fduai.ir into mlir(optimization level 2).
+
+| add | 147 ms | 
+| mul | 146 ms |
+| matmul | 141 ms |
+| transpose | 148 ms | 
 
 ---
 
-# Key Findings: Basic Operations
-
 ## Performance Characteristics
 
-- **Variable Operations**: ~1-2 μs (graph construction only)
-- **PyTorch vs NumPy**: 4-5× speedup for element-wise ops
-- **CUDA Acceleration**: Additional 3-5× over CPU
-- **Matrix Multiplication**: 10× speedup with CUDA
-- **Transpose**: Near-zero time (lazy evaluation)
+- **Variable Operations**: consistently faster than numpy and pytorch.
+- **Mlir vs. tensor_module**: about 2-4x speedup
+- **Transpose**: slower than pytorch and numpy
 
 ---
