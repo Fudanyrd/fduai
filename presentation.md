@@ -315,6 +315,7 @@ def __add__(self, other):
 | Multiplication | a × b | ∂L/∂a = ∂L/∂out × b, ∂L/∂b = ∂L/∂out × a |
 | MatMul | A @ B | ∂L/∂A = ∂L/∂out @ B^T, ∂L/∂B = A^T @ ∂L/∂out |
 | ReLU | max(0, x) | ∂L/∂x = ∂L/∂out × (x > 0) |
+| ... | ... | ... |
 
 ---
 
@@ -501,14 +502,10 @@ Mean execution time of training a linear regression model across 100 runs:
 
 - **Tensor Dimensions**
   - Basic operations: 1000×1000 matrices
-  - AutoDiff: 100×100 matrices for matmul
-  - Linear layer: 1024 inputs/outputs, batch size 1024
+  - Broadcast operations: 1000×1000 matrix and scalar
 ---
 
-# Basic Tensor Operations Performance
-
 ## Mlir Pass Pipeline
-
 
 ```py
 # add necessary memory free operations
@@ -532,6 +529,8 @@ convert_to_llvm_pass = PassPipeline(
 )
 ```
 
+# Basic Tensor Operations Performance
+
 ## Comparing Variable, NumPy, and PyTorch
 
 ```py
@@ -551,6 +550,7 @@ with Module() as m:
 | mul | 220 μs | 302 μs | 15107 μs | 401 μs |
 | matmul | 250 μs | 16180 μs | 24775 μs | 1023 μs |
 | transpose | 100 μs | 17.6 μs | 38.9 μs | 202.0 μs |
+| broadcast add | 100 μs | 202 μs | 15060 μs | 211 μs |
 
 ## Compilation Time
 
@@ -560,6 +560,7 @@ with Module() as m:
 | mul | 146 ms |
 | matmul | 141 ms |
 | transpose | 148 ms | 
+| broadcast add | 138 ms |
 
 ---
 
