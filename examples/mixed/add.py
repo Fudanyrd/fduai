@@ -51,3 +51,19 @@ for _ in range(1000):
         del c
 end = time.time()
 print(f"Time taken for torch: {round(end-start, 5)}", file=sys.stderr)
+
+
+from tensor_module import Tensor
+
+a = Tensor.zeros(shape)
+b = Tensor.zeros(shape)
+
+start = time.time()
+for _ in range(1000):
+    c = a + b
+end = time.time()
+print(f"Time taken for tensor: {round(end-start, 5)}", file=sys.stderr)
+
+
+
+

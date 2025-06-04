@@ -22,7 +22,7 @@ X = np.random.random((n_sample, n_feature)).astype(np.float32) * 4.0
 noise = np.random.random((n_sample, 1)).astype(np.float32) * 0.1
 Y = 2 * X + 1 + noise
 
-REPEAT = 100
+REPEAT = 50
 
 # 1. MLIR 线性回归（只计可执行文件运行时间）
 

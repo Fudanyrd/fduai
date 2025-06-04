@@ -26,7 +26,7 @@ if TENSOR_MODULE_AVAILABLE:
         TENSOR_CUDA = False
 
 SHAPE = (1000, 1000)
-REPEAT = 2000
+REPEAT = 1000
 
 # 操作列表
 OPS = [
