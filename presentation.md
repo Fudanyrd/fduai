@@ -2,6 +2,10 @@
 marp: true
 theme: default
 paginate: true
+style: |
+  section {
+    font-size: 24px;
+  }
 ---
 
 # 🚀 FDUAI
@@ -156,11 +160,11 @@ for (int i = result_ndim - 1; i >= 0; i--) {
 
 ## Adaptive Threading Approach
 
-| Tensor Size | Strategy | Rationale |
-|------------|----------|-----------|
-| ≤ 8 elements | Sequential | Avoid thread overhead |
+| Tensor Size  | Strategy         | Rationale                |
+| ------------ | ---------------- | ------------------------ |
+| ≤ 8 elements | Sequential       | Avoid thread overhead    |
 | Small-Medium | Manual threading | Predictable distribution |
-| Large | OpenMP | Automatic work balancing |
+| Large        | OpenMP           | Automatic work balancing |
 
 ---
 
@@ -309,13 +313,13 @@ def __add__(self, other):
 ---
 
 ## Supported Operations
-| Operation | Forward | Gradient Rule |
-|-----------|---------|---------------|
-| Addition | a + b | ∂L/∂a = ∂L/∂out, ∂L/∂b = ∂L/∂out |
-| Multiplication | a × b | ∂L/∂a = ∂L/∂out × b, ∂L/∂b = ∂L/∂out × a |
-| MatMul | A @ B | ∂L/∂A = ∂L/∂out @ B^T, ∂L/∂B = A^T @ ∂L/∂out |
-| ReLU | max(0, x) | ∂L/∂x = ∂L/∂out × (x > 0) |
-| ... | ... | ... |
+| Operation      | Forward   | Gradient Rule                                |
+| -------------- | --------- | -------------------------------------------- |
+| Addition       | a + b     | ∂L/∂a = ∂L/∂out, ∂L/∂b = ∂L/∂out             |
+| Multiplication | a × b     | ∂L/∂a = ∂L/∂out × b, ∂L/∂b = ∂L/∂out × a     |
+| MatMul         | A @ B     | ∂L/∂A = ∂L/∂out @ B^T, ∂L/∂B = A^T @ ∂L/∂out |
+| ReLU           | max(0, x) | ∂L/∂x = ∂L/∂out × (x > 0)                    |
+| ...            | ...       | ...                                          |
 
 ---
 
@@ -476,11 +480,11 @@ with Module() as m:
 
 Mean execution time of training a linear regression model across 100 runs:
 
-| Implementation | Time (ms) | Speedup |
-|----------------|-----------|---------|
-| FDUAI Interpreted | 333.23 | 1× |
-| PyTorch | 13.69 | 24× |
-| **FDUAI Compiled** | **0.74** | **450×** |
+| Implementation     | Time (ms) | Speedup  |
+| ------------------ | --------- | -------- |
+| FDUAI Interpreted  | 333.23    | 1×       |
+| PyTorch            | 13.69     | 24×      |
+| **FDUAI Compiled** | **0.74**  | **450×** |
 
 ### Performance Gains
 - **450× speedup** over interpreted autograd
@@ -528,10 +532,9 @@ convert_to_llvm_pass = PassPipeline(
     '--reconcile-unrealized-casts',
 )
 ```
+---
 
 # Basic Tensor Operations Performance
-
-## Comparing Variable, NumPy, and PyTorch
 
 ```py
 shape = [1000, 1000]
@@ -544,13 +547,13 @@ with Module() as m:
                 c = a + b
 ```
 
-| Operation | Mlir(-O2) | NumPy | Torch(CPU) | tensor_module(CPU) |
-|-----------|----------|--------|------------|-------------|
-| add | 260 μs | 301 μs | 15108 μs | 403 μs |
-| mul | 220 μs | 302 μs | 15107 μs | 401 μs |
-| matmul | 250 μs | 16180 μs | 24775 μs | 1023 μs |
-| transpose | 100 μs | 17.6 μs | 38.9 μs | 202.0 μs |
-| broadcast add | 100 μs | 202 μs | 15060 μs | 211 μs |
+| Operation     | Mlir(-O2) | NumPy    | Torch(CPU) | tensor_module(CPU) |
+| ------------- | --------- | -------- | ---------- | ------------------ |
+| add           | 260 μs    | 301 μs   | 15108 μs   | 403 μs             |
+| mul           | 220 μs    | 302 μs   | 15107 μs   | 401 μs             |
+| matmul        | 250 μs    | 16180 μs | 24775 μs   | 1023 μs            |
+| transpose     | 100 μs    | 17.6 μs  | 38.9 μs    | 202.0 μs           |
+| broadcast add | 100 μs    | 202 μs   | 15060 μs   | 211 μs             |
 
 ## Compilation Time
 
@@ -570,4 +573,3 @@ with Module() as m:
 - **Mlir vs. tensor_module**: about 2-4x speedup
 - **Transpose**: slower than pytorch and numpy
 
----
