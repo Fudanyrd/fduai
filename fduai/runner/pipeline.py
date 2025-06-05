@@ -59,3 +59,13 @@ affine_accelerate_pass = PassPipeline(
     '--affine-loop-unroll',
     '--affine-super-vectorize',
 )
+
+# convert gpu dialects to llvm dialect
+gpu_to_llvm_pass = PassPipeline(
+    "-gpu-lower-to-nvvm-pipeline",
+    "--convert-gpu-to-nvvm",
+    "--convert-to-llvm",
+    "--gpu-module-to-binary",
+    "--convert-to-llvm",
+    "--reconcile-unrealized-casts",
+)
