@@ -25,7 +25,44 @@ style: |
 杨润东 • 杨淳瑜 • 王海天
 
 
-
+<table>
+    <tr>
+        <td> tensor_module.Device.CPU </td>
+        <td> 杨润东 </td>
+    </tr>
+    <tr>
+        <td> tensor_module.Device.CUDA </td>
+        <td> 杨淳瑜 </td>
+    </tr>
+    <tr>
+        <td>fduai.autograd </td>
+        <td> 杨润东 </td>
+    </tr>
+    <tr>
+        <td>  fduai.common </td>
+        <td> 杨润东 </td>
+    </tr>
+    <tr>
+        <td> fduai.compiler </td>
+        <td> 杨润东 </td>
+    </tr>
+    <tr>
+        <td> fduai.runner.cpu </td>
+        <td> 杨润东 </td>
+    </tr>
+    <tr>
+        <td> fduai.runner.cuda </td>
+        <td> 王海天 </td>
+    </tr>
+    <tr>
+        <td> examples </td>
+        <td> 王海天 </td>
+    </tr>
+    <tr>
+        <td> report writing </td>
+        <td> 杨淳瑜 </td>
+    </tr>
+</table>
 
 
 ---
@@ -47,141 +84,36 @@ style: |
 
 ---
 
-# Core Design Principles
-
-## Device-Aware Dispatch
-
-```cpp
-static Tensor add(const Tensor &a, const Tensor &b) {
-    if (a.device == Device::CUDA && b.device == Device::CUDA) {
-        return cuda_add(a, b);
-    } else if (a.device == Device::CPU && b.device == Device::CPU) {
-        return cpu_add(a, b);
-    } else {
-        throw std::invalid_argument("Device mismatch");
-    }
-}
-```
----
-
-## Transparent Migration
-
-```cpp
-void Tensor::to(Device device) {
-    if (this->device == device) {
-        return; // No need to transfer if already on the same device
-    }
-    if (device == Device::CPU) {
-        size_t buf_size = num_elements * sizeof(float);
-        float * host_data = static_cast<float*>(malloc(buf_size));
-        cudaMemcpy(host_data, data, num_elements * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(data);
-        data = host_data;
-        // Allocate CPU memory and copy data back to CPU (not shown here)
-    } else if (device == Device::CUDA) {
-        // Allocate GPU memory and copy data to GPU (not shown here)
-        float * gpu_data;
-        cudaMalloc(&gpu_data, num_elements * sizeof(float));
-        cudaMemcpy(gpu_data, data, num_elements * sizeof(float), cudaMemcpyHostToDevice);
-        free(data); // Free the old CPU data
-        data = gpu_data;
-    }
-    this->device = device;
-}
-```
-
----
-
-# Broadcasting Mechanism
-
 ## NumPy-Compatible Shape Inference
 
-```cpp
-// Compare shapes from right to left
-static bool can_broadcast(const std::vector<int> &a, 
-                         const std::vector<int> &b) {
-    int i1 = a.size() - 1, i2 = b.size() - 1;
-    
-    while (i1 >= 0 && i2 >= 0) {
-        if (a[i1] != b[i2] && a[i1] != 1 && b[i2] != 1) {
-            return false;
-        }
-        i1--; i2--;
-    }
-    return true;
-}
+![from_numpy](https://numpy.org/doc/stable/_images/broadcasting_4.png)
+
+```py
+t1 = Tensor.from_list([[0], [10], [20], [30]])
+assert t1.shape == list((4, 1))
+
+t2 = Tensor.from_list([[1, 2, 3]])
+assert t2.shape == list((1, 3)) 
+
+assert (t1 + t2).to_list() == [[1.0, 2.0, 3.0], 
+                               [11.0, 12.0, 13.0], 
+                               [21.0, 22.0, 23.0], 
+                               [31.0, 32.0, 33.0]]
 ```
 
----
+## Conversion to/from Numpy Array
 
-## View-Based Implementation
+> We implemented buffer protocol, a general and convenient way to exchange data between different languages and libraries.
 
-- The `view` mechanism allows a tensor to be accessed as if it had a different (broadcasted) shape, without copying data.
-- **Index mapping**: For each broadcasted index, map back to the original tensor's index, ignoring broadcasted (size-1) dimensions.
-
-**Core CPU logic:**
-```cpp
-// Map broadcasted indices to original tensor
-const float *Tensor::view(const std::vector<int> &asshape, const std::vector<int> &indices) const {
-    ...
-    for (size_t i = 0; i < shape.size(); i++) {
-        if (shape[i] == 1) continue; // broadcast dim
-        const int idx = indices[i + diff];
-        ... // map to flat offset
-    }
-    return ret;
-}
-```
----
-
-**In elementwise ops:**
-```cpp
-#pragma omp parallel for
-for (int i = 0; i < result.num_elements; i++) {
-    result.data[i] = (*a.view(shape, i)) + (*b.view(shape, i));
-}
-```
-
-**CUDA kernel:**
-```cpp
-// Each thread computes its own broadcasted index
-for (int i = result_ndim - 1; i >= 0; i--) {
-    indices[i] = remaining % result_shape[i];
-    remaining /= result_shape[i];
-}
-// Map to a_idx, b_idx with broadcasting rules
-```
-
-
-
----
-
-# CPU Parallelization Strategies
-
-## Adaptive Threading Approach
-
-| Tensor Size  | Strategy         | Rationale                |
-| ------------ | ---------------- | ------------------------ |
-| ≤ 8 elements | Sequential       | Avoid thread overhead    |
-| Small-Medium | Manual threading | Predictable distribution |
-| Large        | OpenMP           | Automatic work balancing |
-
----
-
-## Map-Reduce Pattern
-
-```cpp
-float map_reduce(const float *a, size_t n, 
-                map_fn map, reduce_fn reduce) {
-    float *buf = malloc(N_THREADS * sizeof(float));
-    
-    #pragma omp parallel for
-    for (int t = 0; t < N_THREADS; t++) {
-        buf[t] = accumulate_chunk(a, t, map);
-    }
-    
-    return reduce(buf, N_THREADS);
-}
+```py
+>>> from tensor_module import *
+>>> a = Tensor.from_list([1,2,3])
+>>> np.array(a)
+array([1., 2., 3.], dtype=float32)
+>>> b = Tensor.from_numpy(a)
+>>> b.to_list()
+[1.0, 2.0, 3.0]
+>>> assert b.to_list() == [1., 2., 3.]
 ```
 
 ---
@@ -215,29 +147,8 @@ __global__ void broadcastOpKernel(const float *a, const float *b,
 
 ---
 
-# Memory Model & Python Integration
+## Key Takeaways
 
-## Zero-Copy Buffer Protocol
-
-```cpp
-static Tensor from_numpy(py::array_t<float> &arr) {
-    std::vector<int> shape(arr.ndim());
-    for (int i = 0; i < arr.ndim(); i++) {
-        shape[i] = arr.shape(i);
-    }
-    
-    Tensor tensor(shape, Device::CPU);
-    std::memcpy(tensor.data, arr.data(), 
-                tensor.num_elements * sizeof(float));
-    return tensor;
-}
-```
-
----
-
-# Key Takeaways
-
-## Design Achievements
 - **Unified API** - Same code works on CPU/CUDA
 - **Compatibility** - NumPy broadcasting semantics
 - **Element-wise ops**: Near-memory bandwidth limited
@@ -256,25 +167,8 @@ static Tensor from_numpy(py::array_t<float> &arr) {
 
 ## Dynamic Computation Graphs for Deep Learning
 
-### Core Features
-- **DataNode abstraction** wraps tensors with gradient tracking
-- **Operator overloading** builds graphs automatically
-- **Static topological ordering** for efficient backpropagation
 
-### Design Philosophy
-```python
-# User writes natural Python code
-y = DataNode.matmul(x, w) + b
-loss = (y - y_true) ** 2
-
-# Gradients computed automatically
-loss.backward()
-print(w.grad)  # ∂loss/∂w computed!
-```
-
----
-
-## Key Components
+## Implementation
 
 ```python
 class DataNode:
@@ -286,16 +180,14 @@ class DataNode:
         DataNode.topological_order.append(self)  # Global tracking
 ```
 
-**Innovation**: Static topological ordering eliminates graph traversal
+**Innovation**: 
+- Static topological ordering eliminates graph traversal
 - Nodes recorded in creation order
 - Implicit dependency tracking
-- Efficient gradient accumulation
 
 ---
 
-# Graph Construction via Operator Overloading
-
-## Automatic Graph Building
+### Automatic Graph Building
 
 ```python
 def __add__(self, other):
@@ -310,22 +202,8 @@ def __add__(self, other):
     
     return ret
 ```
----
 
-## Supported Operations
-| Operation      | Forward   | Gradient Rule                                |
-| -------------- | --------- | -------------------------------------------- |
-| Addition       | a + b     | ∂L/∂a = ∂L/∂out, ∂L/∂b = ∂L/∂out             |
-| Multiplication | a × b     | ∂L/∂a = ∂L/∂out × b, ∂L/∂b = ∂L/∂out × a     |
-| MatMul         | A @ B     | ∂L/∂A = ∂L/∂out @ B^T, ∂L/∂B = A^T @ ∂L/∂out |
-| ReLU           | max(0, x) | ∂L/∂x = ∂L/∂out × (x > 0)                    |
-| ...            | ...       | ...                                          |
-
----
-
-# Backpropagation Implementation
-
-## Reverse-Mode Differentiation
+### Reverse-Mode Differentiation
 
 ```python
 def backward(self, grad=None):
@@ -345,6 +223,21 @@ def backward(self, grad=None):
 ```
 
 ---
+
+## Supported Operations
+
+> See [fduai.common.op](./fduai/common/op.py) for all supported operations.
+
+| Operation      | Forward   | Gradient Rule                                |
+| -------------- | --------- | -------------------------------------------- |
+| Addition       | a + b     | ∂L/∂a = ∂L/∂out, ∂L/∂b = ∂L/∂out             |
+| Multiplication | a × b     | ∂L/∂a = ∂L/∂out × b, ∂L/∂b = ∂L/∂out × a     |
+| MatMul         | A @ B     | ∂L/∂A = ∂L/∂out @ B^T, ∂L/∂B = A^T @ ∂L/∂out |
+| ReLU           | max(0, x) | ∂L/∂x = ∂L/∂out × (x > 0)                    |
+| ...            | ...       | ...                                          |
+
+---
+
 
 ## Linear Regression in 10 Lines
 
@@ -368,6 +261,8 @@ for _ in range(100):
     
     DataNode.zero_grad()
 ```
+
+![linear-regression](./figures/linear-regression.png)
 
 ---
 
